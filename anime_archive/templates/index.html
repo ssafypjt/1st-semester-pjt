@@ -1,0 +1,347 @@
+{% load static %}
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>덕꾸 Deokkku</title>
+    <link rel="stylesheet" href="{% static 'css/app.css' %}" />
+    <script defer src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script defer src="{% static 'js/app.js' %}"></script>
+  </head>
+  <body>
+    <div id="app" v-cloak>
+      <div class="shell-bg">
+        <span class="tape tape-a"></span>
+        <span class="tape tape-b"></span>
+        <span class="spark s1">*</span>
+        <span class="spark s2">♡</span>
+        <span class="spark s3">☆</span>
+        <span class="polaroid polaroid-left"></span>
+        <span class="memo memo-right">Today's log<br />☑ 감상<br />☑ 명장면<br />☑ 공유</span>
+      </div>
+
+      <section v-if="screen === 'login'" class="login-stage">
+        <article class="login-card">
+          <div class="login-panel">
+            <h1><span>덕꾸</span>에 로그인</h1>
+            <p>좋아하는 순간을 기록하고,<br />나만의 다꾸 앨범을 만들어보세요 ✨</p>
+
+            <label class="field">
+              <span>♙</span>
+              <input type="email" placeholder="이메일 주소" v-model="login.email" />
+              <b>✉</b>
+            </label>
+            <label class="field">
+              <span>▣</span>
+              <input type="password" placeholder="비밀번호" v-model="login.password" />
+              <b>◌</b>
+            </label>
+
+            <div class="login-options">
+              <label><input type="checkbox" v-model="login.remember" /> 로그인 상태 유지</label>
+              <button type="button">비밀번호 찾기</button>
+            </div>
+
+            <button class="primary full" type="button" @click="screen = 'dashboard'">로그인</button>
+
+            <div class="divider"><span>또는</span></div>
+            <button class="oauth" type="button"><b>G</b> Google로 계속하기</button>
+            <button class="oauth" type="button"><b>●</b> 카카오로 계속하기</button>
+            <button class="oauth" type="button"><b></b> Apple로 계속하기</button>
+
+            <p class="join">계정이 없으신가요? <button type="button">회원가입</button></p>
+          </div>
+
+          <div class="brand-panel">
+            <img class="main-logo-img" src="{% static 'images/main-logo.png' %}" alt="덕꾸 Deokkku 대표 로고" />
+            <p class="brand-copy">
+              애니를 보고 설레였던 그 순간,<br />
+              좋아하는 장면, 캐릭터, 대사까지<br />
+              나만의 다꾸로 예쁘게 기록해보세요!
+            </p>
+            <div class="feature-row">
+              <div><span>♡</span><b>나만의 앨범</b><small>애니별로 정리</small></div>
+              <div><span>✧</span><b>자유로운 꾸미기</b><small>스티커와 메모</small></div>
+              <div><span>↗</span><b>쉽게 공유하기</b><small>링크와 이미지</small></div>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section v-else class="workspace">
+        <aside class="sidebar">
+          <button class="brand deokkku-mini" type="button" @click="screen = 'login'" aria-label="덕꾸 홈">
+            <img class="simple-logo-img" src="{% static 'images/simple-logo.png' %}" alt="" @error="$event.target.style.display='none'" />
+            <span>덕꾸</span>
+            <small>Deokkku</small>
+          </button>
+          <p>내가 사랑하는 애니메이션을<br />기록하고, 모으고, 공유하는 공간</p>
+          <nav>
+            <button v-for="item in nav" :key="item" :class="{ active: activePage === item }" type="button" @click="activePage = item">
+              <span>[[ navIcon(item) ]]</span>[[ item ]]
+            </button>
+          </nav>
+          <div class="today">
+            <b>오늘의 한 마디</b>
+            <p>좋아하는 작품을 기록하는 순간이 내일의 나를 만든다 ✨</p>
+          </div>
+          <div class="tags">
+            <b>최근 태그</b>
+            <span v-for="tag in recentTags" :key="tag">#[[ tag ]]</span>
+          </div>
+        </aside>
+
+        <main class="main">
+          <header class="topbar">
+            <label class="search">
+              <input v-model="query" placeholder="애니 제목, 캐릭터, 태그로 검색해보세요" />
+              <span>⌕</span>
+            </label>
+            <div class="top-actions">
+              <button class="primary" type="button" @click="openRecordModal">＋ 새 기록</button>
+              <button class="icon-btn" type="button">♢</button>
+              <button class="avatar" type="button"></button>
+            </div>
+          </header>
+
+          <div v-if="activePage === '홈'" class="content-grid">
+            <section class="editor-zone">
+              <div class="section-head">
+                <div>
+                  <h2>내 기록</h2>
+                </div>
+                <div class="toolset">
+                  <button class="tool-action" type="button" title="이전 작업으로 되돌리기"><span>↶</span><b>실행 취소</b></button>
+                  <button class="tool-action memo-action" type="button" @click="addTextMemo" title="움직일 수 있는 메모 추가"><span>T</span><b>메모 추가</b></button>
+                  <button class="primary small tool-action save-action" type="button" @click="saveCard" title="현재 다이어리 카드 저장"><span>▣</span><b>저장</b></button>
+                </div>
+              </div>
+
+              <article class="scrapbook blank-scrapbook" ref="scrapbook">
+                <div class="page left-page">
+                  <small>[[ selectedView.date ]]</small>
+                  <h3>[[ selectedView.title ]]</h3>
+                  <div class="stars">[[ stars(selectedView.rating) ]]</div>
+                  <div v-if="isCanvasEmpty" class="blank-guide">
+                    <strong>빈 다이어리</strong>
+                    <span>오른쪽 도구에서 이미지, 메모, 스티커를 붙여 자유롭게 꾸며보세요.</span>
+                  </div>
+                </div>
+                <div class="binder" aria-hidden="true"><span v-for="ring in 7" :key="ring"></span></div>
+                <div class="page right-page">
+                  <div v-if="isCanvasEmpty" class="blank-guide right">
+                    <strong>꾸미기 영역</strong>
+                    <span>텍스트 메모는 입력, 이동, 삭제, 크기 조절이 가능합니다.</span>
+                  </div>
+                </div>
+
+                <div
+                  v-for="item in placedItems"
+                  :key="item.id"
+                  class="placed-sticker"
+                  :class="item.tone"
+                  :style="{ left: item.x + '%', top: item.y + '%', width: item.width ? item.width + 'px' : null, transform: `rotate(${item.rotate}deg) scale(${item.scale})` }"
+                  role="button"
+                  tabindex="0"
+                  @click.stop="selectDecoration(item.id)"
+                  @pointerdown="startStickerDrag($event, item)"
+                  :title="'드래그로 이동'"
+                >
+                  <textarea
+                    v-if="item.type === 'text'"
+                    v-model="item.text"
+                    @pointerdown.stop
+                    @click.stop="selectDecoration(item.id)"
+                    placeholder="메모를 입력하세요"
+                  ></textarea>
+                  <img v-else-if="item.imageSrc" :src="item.imageSrc" alt="첨부 이미지" />
+                  <span v-else>[[ item.icon ]]</span>
+                  <input
+                    v-if="selectedDecorationId === item.id"
+                    class="item-size"
+                    type="range"
+                    min="0.55"
+                    max="2"
+                    step="0.05"
+                    v-model.number="item.scale"
+                    @pointerdown.stop
+                    @click.stop
+                    title="요소 크기 조절"
+                  />
+                  <button
+                    v-if="selectedDecorationId === item.id"
+                    class="delete-decoration"
+                    type="button"
+                    @pointerdown.stop
+                    @click.stop="removeSticker(item.id)"
+                    title="삭제"
+                  >
+                    ×
+                  </button>
+                </div>
+              </article>
+
+              <div class="canvas-tools">
+                <button v-for="tool in canvasTools" :key="tool.label" type="button" @click="tool.action === 'memo' ? addTextMemo() : null">[[ tool.icon ]] [[ tool.label ]]</button>
+                <span></span>
+                <button type="button">−</button>
+                <b>100%</b>
+                <button type="button">＋</button>
+              </div>
+            </section>
+
+            <aside class="right-rail">
+              <panel-card title="스티커샵">
+                <template #action>클릭해서 붙이기</template>
+                <div class="subtabs">
+                  <button
+                    v-for="category in stickerCategories"
+                    :key="category"
+                    :class="{ active: activeStickerCategory === category }"
+                    type="button"
+                    @click="activeStickerCategory = category"
+                  >
+                    [[ category ]]
+                  </button>
+                </div>
+                <div class="sticker-grid">
+                  <button
+                    v-for="sticker in visibleDecorations"
+                    :key="sticker.icon"
+                    :class="sticker.tone"
+                    type="button"
+                    @click="addDecoration(sticker)"
+                  >
+                    [[ sticker.icon ]]
+                  </button>
+                </div>
+                <p class="shop-help">스티커, 프레임, 말풍선, 아이콘을 붙인 뒤 드래그로 옮길 수 있어요.</p>
+              </panel-card>
+              <panel-card title="이미지 첨부">
+                <template #action>내 이미지 붙이기</template>
+                <label class="upload-drop">
+                  <input type="file" accept="image/*" @change="handleImageUpload" />
+                  <span>＋</span>
+                  <b>이미지 선택</b>
+                  <small>선택한 이미지는 다이어리 위에 붙고 드래그로 옮길 수 있어요.</small>
+                </label>
+              </panel-card>
+              <panel-card title="추천 키워드">
+                <template #action>AI 추천</template>
+                <div class="keyword-list">
+                  <button v-for="tag in ai.tags" :key="tag" type="button">#[[ tag ]]</button>
+                </div>
+              </panel-card>
+            </aside>
+          </div>
+
+          <section v-else class="detail-page">
+            <header>
+              <span>[[ navIcon(activePage) ]]</span>
+              <div>
+                <h2>[[ activePage ]]</h2>
+                <p>[[ pageDescription ]]</p>
+              </div>
+            </header>
+            <div class="detail-grid">
+              <article v-for="card in detailCards" :key="card.title" class="detail-card">
+                <b>[[ card.title ]]</b>
+                <p>[[ card.body ]]</p>
+              </article>
+            </div>
+            <div v-if="activePage === '내 앨범'" class="saved-album-grid">
+              <article v-for="card in savedCards" :key="card.id" class="saved-card">
+                <small>[[ card.date ]]</small>
+                <h3>[[ card.title ]]</h3>
+                <p>[[ card.rating ]] / 10 [[ stars(card.rating) ]]</p>
+                <span>장식 [[ card.itemCount ]]개로 저장됨</span>
+              </article>
+              <article v-if="savedCards.length === 0" class="saved-empty">
+                <b>아직 저장한 카드가 없어요.</b>
+                <p>홈에서 다이어리를 꾸민 뒤 저장을 누르면 여기에 나타납니다.</p>
+              </article>
+            </div>
+          </section>
+
+          <section class="share-showcase">
+            <div class="panel-head">
+              <div>
+                <h3>모바일 공유 스타일</h3>
+                <p>웹에서 만든 다이어리 기록을 스토리, 피드, 링크 카드, 이미지 저장용으로 미리 볼 수 있어요.</p>
+              </div>
+              <div class="share-tabs">
+                <button v-for="mode in shareModes" :key="mode.id" :class="{ active: shareMode === mode.id }" type="button" @click="shareMode = mode.id">
+                  [[ mode.label ]]
+                </button>
+              </div>
+            </div>
+            <div class="share-preview-board">
+              <article class="phone-preview" :class="shareMode">
+                <div class="phone-top"><span></span><b>ANILOG</b><span></span></div>
+                <div class="mobile-card">
+                  <small>[[ selectedView.date ]]</small>
+                  <h4>[[ selectedView.title ]]</h4>
+                  <div class="mobile-art">
+                    <img v-if="mainImageSrc" :src="mainImageSrc" alt="" />
+                    <span v-else class="empty-image-slot">
+                      <strong>＋</strong>
+                      <em>이미지</em>
+                    </span>
+                    <i v-for="item in placedItems.slice(0, 6)" :key="item.id">
+                      <span v-if="item.type === 'text'">T</span>
+                      <img v-else-if="item.imageSrc" :src="item.imageSrc" alt="" />
+                      <span v-else>[[ item.icon ]]</span>
+                    </i>
+                  </div>
+                  <p>[[ selectedView.memo ]]</p>
+                  <strong>[[ selectedView.rating ]] / 10 [[ stars(selectedView.rating) ]]</strong>
+                </div>
+                <div class="phone-actions">
+                  <button type="button">이미지 저장</button>
+                  <button type="button">링크 복사</button>
+                  <button type="button">스토리 저장</button>
+                </div>
+              </article>
+              <article class="share-note">
+                <b>공유 활용 팁</b>
+                <p>스토리형은 세로 이미지, 피드형은 정사각 카드, 링크형은 카카오톡 미리보기처럼 구성됩니다.</p>
+                <div class="share-icons"><span>↓</span><span>K</span><span>↗</span><span>⋯</span></div>
+              </article>
+            </div>
+          </section>
+
+          <div v-if="isRecordModalOpen" class="modal-backdrop" @click.self="closeRecordModal">
+            <section class="record-modal" role="dialog" aria-modal="true" aria-label="새 기록 만들기">
+              <header>
+                <h3>새 기록 만들기</h3>
+                <button type="button" @click="closeRecordModal">×</button>
+              </header>
+              <label>
+                <span>작품명</span>
+                <input v-model="recordForm.title" placeholder="애니메이션 제목을 입력하세요" />
+              </label>
+              <label>
+                <span>감상 날짜</span>
+                <input type="date" v-model="recordForm.date" />
+              </label>
+              <label>
+                <span>별점</span>
+                <input type="range" min="0" max="10" step="0.5" v-model.number="recordForm.rating" />
+                <b>[[ recordForm.rating ]] / 10 [[ stars(recordForm.rating) ]]</b>
+              </label>
+              <div class="modal-actions">
+                <button type="button" @click="closeRecordModal">취소</button>
+                <button class="primary" type="button" @click="createBlankRecord">시작하기</button>
+              </div>
+              <p>AniList 자동완성은 이 입력 영역에 연결하기 좋은 구조로 준비해두었습니다.</p>
+            </section>
+          </div>
+
+          <div v-if="toastMessage" class="toast">[[ toastMessage ]]</div>
+
+        </main>
+      </section>
+    </div>
+  </body>
+</html>
