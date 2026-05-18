@@ -1400,6 +1400,86 @@ button {
   display: none !important;
 }
 
+.sticker-grid button.masking-tape {
+  position: relative;
+  overflow: hidden;
+  font-size: 0;
+}
+
+.sticker-grid button.masking-tape::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 50%;
+  height: 28px;
+  border-radius: 4px;
+  transform: translateY(-50%) rotate(-7deg);
+  box-shadow: 0 5px 10px rgba(74, 52, 98, .12);
+}
+
+.placed-sticker.masking-tape {
+  min-width: 116px;
+  min-height: 42px;
+  padding: 0;
+  overflow: visible;
+  font-size: 0;
+}
+
+.placed-sticker.masking-tape > span {
+  font-size: 0;
+}
+
+.placed-sticker.masking-tape::before {
+  content: "" !important;
+  display: block !important;
+  position: absolute;
+  inset: 5px 0;
+  border-radius: 4px;
+  box-shadow: 0 7px 12px rgba(74, 52, 98, .13);
+}
+
+.placed-sticker.masking-tape::after {
+  content: "";
+  position: absolute;
+  inset: 8px 10px;
+  border-radius: 3px;
+  background: rgba(255,255,255,.22);
+  opacity: .72;
+}
+
+.sticker-grid button.tape-lavender::before,
+.placed-sticker.tape-lavender::before {
+  background:
+    linear-gradient(45deg, rgba(255,255,255,.38) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.38) 50%, rgba(255,255,255,.38) 75%, transparent 75%),
+    #d7b6ef;
+  background-size: 18px 18px;
+}
+
+.sticker-grid button.tape-rose::before,
+.placed-sticker.tape-rose::before {
+  background:
+    radial-gradient(circle, rgba(255,255,255,.68) 0 3px, transparent 4px),
+    #f4a8c4;
+  background-size: 16px 16px;
+}
+
+.sticker-grid button.tape-mint::before,
+.placed-sticker.tape-mint::before {
+  background:
+    repeating-linear-gradient(90deg, rgba(255,255,255,.5) 0 8px, transparent 8px 16px),
+    #aee6dc;
+}
+
+.sticker-grid button.tape-grid::before,
+.placed-sticker.tape-grid::before {
+  background:
+    linear-gradient(rgba(255,255,255,.48) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.48) 1px, transparent 1px),
+    #c9d8f0;
+  background-size: 10px 10px;
+}
+
 .sticker-grid button.pink,
 .placed-sticker.pink {
   color: #b94f7d;
