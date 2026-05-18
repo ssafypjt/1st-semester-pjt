@@ -5,9 +5,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>덕꾸 Deokkku</title>
-    <link rel="stylesheet" href="{% static 'css/app.css' %}" />
+    <link rel="stylesheet" href="{% static 'css/app.css' %}?v=save-popup-1" />
     <script defer src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-    <script defer src="{% static 'js/app.js' %}"></script>
+    <script defer src="{% static 'js/app.js' %}?v=save-popup-1"></script>
   </head>
   <body>
     <div id="app" v-cloak>
@@ -105,136 +105,28 @@
             </div>
           </header>
 
-          <div v-if="activePage === '홈'" class="content-grid">
-            <section class="editor-zone">
-              <div class="section-head">
-                <div>
-                  <h2>내 기록</h2>
-                </div>
-                <div class="toolset">
-                  <button class="tool-action" type="button" title="이전 작업으로 되돌리기"><span>↶</span><b>실행 취소</b></button>
-                  <button class="tool-action memo-action" type="button" @click="addTextMemo" title="움직일 수 있는 메모 추가"><span>T</span><b>메모 추가</b></button>
-                  <button class="primary small tool-action save-action" type="button" @click="saveCard" title="현재 다이어리 카드 저장"><span>▣</span><b>저장</b></button>
-                </div>
-              </div>
-
-              <article class="scrapbook blank-scrapbook" ref="scrapbook">
-                <div class="page left-page">
-                  <small>[[ selectedView.date ]]</small>
-                  <h3>[[ selectedView.title ]]</h3>
-                  <div class="stars">[[ stars(selectedView.rating) ]]</div>
-                  <div v-if="isCanvasEmpty" class="blank-guide">
-                    <strong>빈 다이어리</strong>
-                    <span>오른쪽 도구에서 이미지, 메모, 스티커를 붙여 자유롭게 꾸며보세요.</span>
-                  </div>
-                </div>
-                <div class="binder" aria-hidden="true"><span v-for="ring in 7" :key="ring"></span></div>
-                <div class="page right-page">
-                  <div v-if="isCanvasEmpty" class="blank-guide right">
-                    <strong>꾸미기 영역</strong>
-                    <span>텍스트 메모는 입력, 이동, 삭제, 크기 조절이 가능합니다.</span>
-                  </div>
-                </div>
-
-                <div
-                  v-for="item in placedItems"
-                  :key="item.id"
-                  class="placed-sticker"
-                  :class="item.tone"
-                  :style="{ left: item.x + '%', top: item.y + '%', width: item.width ? item.width + 'px' : null, transform: `rotate(${item.rotate}deg) scale(${item.scale})` }"
-                  role="button"
-                  tabindex="0"
-                  @click.stop="selectDecoration(item.id)"
-                  @pointerdown="startStickerDrag($event, item)"
-                  :title="'드래그로 이동'"
-                >
-                  <textarea
-                    v-if="item.type === 'text'"
-                    v-model="item.text"
-                    @pointerdown.stop
-                    @click.stop="selectDecoration(item.id)"
-                    placeholder="메모를 입력하세요"
-                  ></textarea>
-                  <img v-else-if="item.imageSrc" :src="item.imageSrc" alt="첨부 이미지" />
-                  <span v-else>[[ item.icon ]]</span>
-                  <input
-                    v-if="selectedDecorationId === item.id"
-                    class="item-size"
-                    type="range"
-                    min="0.55"
-                    max="2"
-                    step="0.05"
-                    v-model.number="item.scale"
-                    @pointerdown.stop
-                    @click.stop
-                    title="요소 크기 조절"
-                  />
-                  <button
-                    v-if="selectedDecorationId === item.id"
-                    class="delete-decoration"
-                    type="button"
-                    @pointerdown.stop
-                    @click.stop="removeSticker(item.id)"
-                    title="삭제"
-                  >
-                    ×
-                  </button>
-                </div>
-              </article>
-
-              <div class="canvas-tools">
-                <button v-for="tool in canvasTools" :key="tool.label" type="button" @click="tool.action === 'memo' ? addTextMemo() : null">[[ tool.icon ]] [[ tool.label ]]</button>
-                <span></span>
-                <button type="button">−</button>
-                <b>100%</b>
-                <button type="button">＋</button>
-              </div>
-            </section>
-
-            <aside class="right-rail">
-              <panel-card title="스티커샵">
-                <template #action>클릭해서 붙이기</template>
-                <div class="subtabs">
-                  <button
-                    v-for="category in stickerCategories"
-                    :key="category"
-                    :class="{ active: activeStickerCategory === category }"
-                    type="button"
-                    @click="activeStickerCategory = category"
-                  >
-                    [[ category ]]
-                  </button>
-                </div>
-                <div class="sticker-grid">
-                  <button
-                    v-for="sticker in visibleDecorations"
-                    :key="sticker.icon"
-                    :class="sticker.tone"
-                    type="button"
-                    @click="addDecoration(sticker)"
-                  >
-                    [[ sticker.icon ]]
-                  </button>
-                </div>
-                <p class="shop-help">스티커, 프레임, 말풍선, 아이콘을 붙인 뒤 드래그로 옮길 수 있어요.</p>
-              </panel-card>
-              <panel-card title="이미지 첨부">
-                <template #action>내 이미지 붙이기</template>
-                <label class="upload-drop">
-                  <input type="file" accept="image/*" @change="handleImageUpload" />
-                  <span>＋</span>
-                  <b>이미지 선택</b>
-                  <small>선택한 이미지는 다이어리 위에 붙고 드래그로 옮길 수 있어요.</small>
-                </label>
-              </panel-card>
-              <panel-card title="추천 키워드">
-                <template #action>AI 추천</template>
-                <div class="keyword-list">
-                  <button v-for="tag in ai.tags" :key="tag" type="button">#[[ tag ]]</button>
-                </div>
-              </panel-card>
-            </aside>
-          </div>
+          <diary-editor
+            v-if="activePage === '홈'"
+            :selected-view="selectedView"
+            :star-label="selectedViewStars"
+            :is-canvas-empty="isCanvasEmpty"
+            :placed-items="placedItems"
+            :selected-decoration-id="selectedDecorationId"
+            :canvas-tools="canvasTools"
+            :sticker-categories="stickerCategories"
+            :active-sticker-category="activeStickerCategory"
+            :visible-decorations="visibleDecorations"
+            :ai-tags="ai.tags"
+            @add-memo="addTextMemo"
+            @save-card="saveCard"
+            @select-decoration="selectDecoration"
+            @clear-decoration="clearDecorationSelection"
+            @remove-decoration="removeSticker"
+            @run-tool="runCanvasTool"
+            @change-sticker-category="activeStickerCategory = $event"
+            @add-decoration="addDecoration"
+            @image-upload="handleImageUpload"
+          ></diary-editor>
 
           <section v-else class="detail-page">
             <header>
@@ -255,7 +147,7 @@
                 <small>[[ card.date ]]</small>
                 <h3>[[ card.title ]]</h3>
                 <p>[[ card.rating ]] / 10 [[ stars(card.rating) ]]</p>
-                <span>장식 [[ card.itemCount ]]개로 저장됨</span>
+                <span>스티커 [[ card.stickerCount || 0 ]]개 · 메모 [[ card.memoCount || 0 ]]개 저장됨</span>
               </article>
               <article v-if="savedCards.length === 0" class="saved-empty">
                 <b>아직 저장한 카드가 없어요.</b>
@@ -338,7 +230,16 @@
             </section>
           </div>
 
-          <div v-if="toastMessage" class="toast">[[ toastMessage ]]</div>
+          <div v-if="toastMessage" class="save-popup-backdrop" @click.self="toastMessage = ''">
+            <section class="save-popup" role="alertdialog" aria-modal="true" aria-label="저장 완료 안내">
+              <strong>[[ toastMessage ]]</strong>
+              <p>내 앨범에서 저장한 다이어리 카드를 확인할 수 있어요.</p>
+              <div>
+                <button type="button" @click="toastMessage = ''">확인</button>
+                <button class="primary" type="button" @click="activePage = '내 앨범'; toastMessage = ''">내 앨범 보기</button>
+              </div>
+            </section>
+          </div>
 
         </main>
       </section>

@@ -1,6 +1,427 @@
 window.addEventListener("load", () => {
   const { createApp } = Vue;
 
+  const PanelCard = {
+    props: ["title"],
+    template: `
+      <section class="panel-card">
+        <header>
+          <h3>{{ title }}</h3>
+          <span><slot name="action"></slot></span>
+        </header>
+        <slot></slot>
+      </section>
+    `,
+  };
+
+  const PlacedDecoration = {
+    props: ["item", "selected"],
+    emits: ["select", "drag-start", "resize-start", "rotate-start", "remove"],
+    computed: {
+      placementStyle() {
+        return {
+          left: `${this.item.x}%`,
+          top: `${this.item.y}%`,
+          width: this.item.width ? `${this.item.width}px` : null,
+          height: this.item.height ? `${this.item.height}px` : null,
+          "--item-scale": this.item.type === "text" ? 1 : this.item.scale || 1,
+        };
+      },
+      stickerStyle() {
+        const scale = this.item.type === "text" ? 1 : this.item.scale || 1;
+        return {
+          transform: `rotate(${this.item.rotate}deg) scale(${scale})`,
+        };
+      },
+      textStyle() {
+        return {
+          fontSize: `${this.item.fontSize || 15}px`,
+        };
+      },
+    },
+    template: `
+      <div
+        class="placed-decoration"
+        :class="{ selected }"
+        :style="placementStyle"
+        role="button"
+        tabindex="0"
+        @click.stop="$emit('select', item.id)"
+        @pointerdown="$emit('drag-start', $event, item)"
+        title="드래그로 이동"
+      >
+        <div class="placed-sticker" :class="item.tone" :style="stickerStyle">
+          <div v-if="item.type === 'text'" class="memo-editor">
+            <textarea
+              v-model="item.text"
+              :style="textStyle"
+              @click.stop="$emit('select', item.id)"
+              placeholder="메모를 입력하세요"
+            ></textarea>
+            <label v-if="selected" class="memo-font-control" @pointerdown.stop @click.stop>
+              <span>글자</span>
+              <input type="range" min="11" max="34" step="1" v-model.number="item.fontSize" title="글자 크기 조절" />
+            </label>
+          </div>
+          <img v-else-if="item.imageSrc" :src="item.imageSrc" alt="첨부 이미지" />
+          <span v-else>{{ item.icon }}</span>
+        </div>
+        <button
+          v-if="selected"
+          class="rotate-decoration"
+          type="button"
+          @pointerdown.stop="$emit('rotate-start', $event, item)"
+          @click.stop
+          title="드래그해서 기울기 조절"
+        >
+          ↻
+        </button>
+        <button
+          v-if="selected"
+          class="resize-decoration"
+          type="button"
+          @pointerdown.stop="$emit('resize-start', $event, item)"
+          @click.stop
+          title="드래그해서 전체 크기 조절"
+          aria-label="크기 조절"
+        ></button>
+        <button
+          v-if="selected"
+          class="delete-decoration"
+          type="button"
+          @pointerdown.stop
+          @click.stop="$emit('remove', item.id)"
+          title="삭제"
+        >
+          ×
+        </button>
+      </div>
+    `,
+  };
+
+  const DecorationLayer = {
+    components: { "placed-decoration": PlacedDecoration },
+    props: ["items", "selectedId"],
+    emits: ["select", "clear", "remove"],
+    data() {
+      return {
+        dragging: null,
+        resizing: null,
+        rotating: null,
+      };
+    },
+    mounted() {
+      window.addEventListener("pointermove", this.handlePointerMove);
+      window.addEventListener("pointerup", this.stopPointerWork);
+    },
+    beforeUnmount() {
+      window.removeEventListener("pointermove", this.handlePointerMove);
+      window.removeEventListener("pointerup", this.stopPointerWork);
+    },
+    methods: {
+      canvasRect() {
+        return this.$refs.layer.getBoundingClientRect();
+      },
+      clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+      },
+      select(itemId) {
+        this.$emit("select", itemId);
+      },
+      remove(itemId) {
+        this.$emit("remove", itemId);
+      },
+      startDrag(event, item) {
+        if (!event.target.closest("textarea")) {
+          event.preventDefault();
+        }
+        this.select(item.id);
+        const rect = this.canvasRect();
+        this.dragging = {
+          item,
+          rect,
+          offsetX: event.clientX - (rect.left + (item.x / 100) * rect.width),
+          offsetY: event.clientY - (rect.top + (item.y / 100) * rect.height),
+        };
+      },
+      startResize(event, item) {
+        event.preventDefault();
+        this.select(item.id);
+        this.resizing = item.type === "text"
+          ? {
+              item,
+              mode: "box",
+              startX: event.clientX,
+              startY: event.clientY,
+              startWidth: item.width || 190,
+              startHeight: item.height || 150,
+            }
+          : {
+              item,
+              mode: "scale",
+              startX: event.clientX,
+              startY: event.clientY,
+              startScale: item.scale || 1,
+            };
+      },
+      startRotate(event, item) {
+        event.preventDefault();
+        this.select(item.id);
+        const rect = event.currentTarget.parentElement.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        this.rotating = {
+          item,
+          centerX,
+          centerY,
+          startAngle: Math.atan2(event.clientY - centerY, event.clientX - centerX),
+          startRotate: item.rotate || 0,
+        };
+      },
+      angleToDegrees(radians) {
+        return radians * 180 / Math.PI;
+      },
+      handlePointerMove(event) {
+        if (this.dragging) {
+          const { item, rect, offsetX, offsetY } = this.dragging;
+          const nextX = ((event.clientX - offsetX - rect.left) / rect.width) * 100;
+          const nextY = ((event.clientY - offsetY - rect.top) / rect.height) * 100;
+          item.x = this.clamp(nextX, 2, 94);
+          item.y = this.clamp(nextY, 3, 90);
+        }
+
+        if (this.resizing) {
+          const { item, mode, startX, startY } = this.resizing;
+          if (mode === "box") {
+            item.width = this.clamp(this.resizing.startWidth + event.clientX - startX, 120, 440);
+            item.height = this.clamp(this.resizing.startHeight + event.clientY - startY, 100, 380);
+          } else {
+            const delta = Math.max(event.clientX - startX, event.clientY - startY);
+            item.scale = this.clamp(this.resizing.startScale + delta / 140, 0.45, 2.8);
+          }
+        }
+
+        if (this.rotating) {
+          const { item, centerX, centerY, startAngle, startRotate } = this.rotating;
+          const currentAngle = Math.atan2(event.clientY - centerY, event.clientX - centerX);
+          item.rotate = Math.round(startRotate + this.angleToDegrees(currentAngle - startAngle));
+        }
+      },
+      stopPointerWork() {
+        this.dragging = null;
+        this.resizing = null;
+        this.rotating = null;
+      },
+    },
+    template: `
+      <div class="decoration-layer" ref="layer" @click.self="$emit('clear')">
+        <placed-decoration
+          v-for="item in items"
+          :key="item.id"
+          :item="item"
+          :selected="selectedId === item.id"
+          @select="select"
+          @drag-start="startDrag"
+          @resize-start="startResize"
+          @rotate-start="startRotate"
+          @remove="remove"
+        ></placed-decoration>
+      </div>
+    `,
+  };
+
+  const DiaryCanvas = {
+    components: { "decoration-layer": DecorationLayer },
+    props: ["selectedView", "starLabel", "isEmpty", "placedItems", "selectedDecorationId"],
+    emits: ["select-decoration", "clear-decoration", "remove-decoration"],
+    template: `
+      <article class="scrapbook blank-scrapbook" @click.self="$emit('clear-decoration')">
+        <div class="page left-page" @click="$emit('clear-decoration')">
+          <small>{{ selectedView.date }}</small>
+          <h3>{{ selectedView.title }}</h3>
+          <div class="stars">{{ starLabel }}</div>
+          <div v-if="isEmpty" class="blank-guide">
+            <strong>빈 다이어리</strong>
+            <span>오른쪽 도구에서 이미지, 메모, 스티커를 붙여 자유롭게 꾸며보세요.</span>
+          </div>
+        </div>
+        <div class="binder" aria-hidden="true"><span v-for="ring in 7" :key="ring"></span></div>
+        <div class="page right-page" @click="$emit('clear-decoration')">
+          <div v-if="isEmpty" class="blank-guide right">
+            <strong>꾸미기 영역</strong>
+            <span>텍스트 메모는 입력, 이동, 삭제, 크기 조절이 가능합니다.</span>
+          </div>
+        </div>
+
+        <decoration-layer
+          :items="placedItems"
+          :selected-id="selectedDecorationId"
+          @select="$emit('select-decoration', $event)"
+          @clear="$emit('clear-decoration')"
+          @remove="$emit('remove-decoration', $event)"
+        ></decoration-layer>
+      </article>
+    `,
+  };
+
+  const CanvasToolbar = {
+    props: ["tools"],
+    emits: ["run-tool"],
+    template: `
+      <div class="canvas-tools">
+        <button v-for="tool in tools" :key="tool.label" type="button" @click="$emit('run-tool', tool)">
+          {{ tool.icon }} {{ tool.label }}
+        </button>
+        <span></span>
+        <button type="button">−</button>
+        <b>100%</b>
+        <button type="button">＋</button>
+      </div>
+    `,
+  };
+
+  const StickerShop = {
+    props: ["categories", "activeCategory", "decorations"],
+    emits: ["change-category", "add-decoration"],
+    template: `
+      <panel-card title="스티커샵">
+        <template #action>클릭해서 붙이기</template>
+        <div class="subtabs">
+          <button
+            v-for="category in categories"
+            :key="category"
+            :class="{ active: activeCategory === category }"
+            type="button"
+            @click="$emit('change-category', category)"
+          >
+            {{ category }}
+          </button>
+        </div>
+        <div class="sticker-grid">
+          <button
+            v-for="sticker in decorations"
+            :key="sticker.icon"
+            :class="sticker.tone"
+            type="button"
+            @click="$emit('add-decoration', sticker)"
+          >
+            {{ sticker.icon }}
+          </button>
+        </div>
+        <p class="shop-help">스티커, 프레임, 말풍선, 아이콘을 붙인 뒤 드래그로 옮길 수 있어요.</p>
+      </panel-card>
+    `,
+  };
+
+  const ImageUploadPanel = {
+    emits: ["image-upload"],
+    template: `
+      <panel-card title="이미지 첨부">
+        <template #action>내 이미지 붙이기</template>
+        <label class="upload-drop">
+          <input type="file" accept="image/*" @change="$emit('image-upload', $event)" />
+          <span>＋</span>
+          <b>이미지 선택</b>
+          <small>선택한 이미지는 다이어리 위에 붙고 드래그로 옮길 수 있어요.</small>
+        </label>
+      </panel-card>
+    `,
+  };
+
+  const KeywordPanel = {
+    props: ["tags"],
+    template: `
+      <panel-card title="추천 키워드">
+        <template #action>AI 추천</template>
+        <div class="keyword-list">
+          <button v-for="tag in tags" :key="tag" type="button">#{{ tag }}</button>
+        </div>
+      </panel-card>
+    `,
+  };
+
+  const DiaryEditor = {
+    components: {
+      "diary-canvas": DiaryCanvas,
+      "canvas-toolbar": CanvasToolbar,
+      "sticker-shop": StickerShop,
+      "image-upload-panel": ImageUploadPanel,
+      "keyword-panel": KeywordPanel,
+    },
+    props: [
+      "selectedView",
+      "starLabel",
+      "isCanvasEmpty",
+      "placedItems",
+      "selectedDecorationId",
+      "canvasTools",
+      "stickerCategories",
+      "activeStickerCategory",
+      "visibleDecorations",
+      "aiTags",
+    ],
+    emits: [
+      "add-memo",
+      "save-card",
+      "select-decoration",
+      "clear-decoration",
+      "remove-decoration",
+      "run-tool",
+      "change-sticker-category",
+      "add-decoration",
+      "image-upload",
+    ],
+    template: `
+      <div class="content-grid">
+        <section class="editor-zone">
+          <div class="section-head">
+            <div>
+              <h2>내 기록</h2>
+            </div>
+            <div class="toolset">
+              <button class="tool-action" type="button" title="이전 작업으로 되돌리기"><span>↶</span><b>실행 취소</b></button>
+              <button class="tool-action memo-action" type="button" @click="$emit('add-memo')" title="움직일 수 있는 메모 추가"><span>T</span><b>메모 추가</b></button>
+              <button
+                class="primary small tool-action save-action"
+                type="button"
+                @pointerdown.stop.prevent="$emit('save-card')"
+                @click.stop.prevent="$emit('save-card')"
+                @keydown.enter.prevent="$emit('save-card')"
+                @keydown.space.prevent="$emit('save-card')"
+                title="현재 다이어리 카드 저장"
+              ><span class="save-icon">▣</span><b>저장</b></button>
+            </div>
+          </div>
+
+          <diary-canvas
+            :selected-view="selectedView"
+            :star-label="starLabel"
+            :is-empty="isCanvasEmpty"
+            :placed-items="placedItems"
+            :selected-decoration-id="selectedDecorationId"
+            @select-decoration="$emit('select-decoration', $event)"
+            @clear-decoration="$emit('clear-decoration')"
+            @remove-decoration="$emit('remove-decoration', $event)"
+          ></diary-canvas>
+
+          <canvas-toolbar :tools="canvasTools" @run-tool="$emit('run-tool', $event)"></canvas-toolbar>
+        </section>
+
+        <aside class="right-rail">
+          <sticker-shop
+            :categories="stickerCategories"
+            :active-category="activeStickerCategory"
+            :decorations="visibleDecorations"
+            @change-category="$emit('change-sticker-category', $event)"
+            @add-decoration="$emit('add-decoration', $event)"
+          ></sticker-shop>
+          <image-upload-panel @image-upload="$emit('image-upload', $event)"></image-upload-panel>
+          <keyword-panel :tags="aiTags"></keyword-panel>
+        </aside>
+      </div>
+    `,
+  };
+
   const defaultAnalysis = {
     summary: "재난과 판타지, 성장의 요소가 자연스럽게 어우러진 작품. 잔잔한 음악과 장면들이 오래 남아요.",
     phrase: "오래 기억에 남을 감정이에요.",
@@ -11,18 +432,8 @@ window.addEventListener("load", () => {
   createApp({
     delimiters: ["[[", "]]"],
     components: {
-      "panel-card": {
-        props: ["title"],
-        template: `
-          <section class="panel-card">
-            <header>
-              <h3>{{ title }}</h3>
-              <span><slot name="action"></slot></span>
-            </header>
-            <slot></slot>
-          </section>
-        `,
-      },
+      "panel-card": PanelCard,
+      "diary-editor": DiaryEditor,
     },
     data() {
       return {
@@ -34,7 +445,6 @@ window.addEventListener("load", () => {
         shareMode: "story",
         isLoading: false,
         isRecordModalOpen: false,
-        draggingSticker: null,
         selectedDecorationId: null,
         mainImageSrc: "",
         currentRecord: {
@@ -50,6 +460,7 @@ window.addEventListener("load", () => {
           rating: 0,
         },
         savedCards: [],
+        lastSaveAt: 0,
         toastMessage: "",
         login: {
           email: "",
@@ -183,6 +594,9 @@ window.addEventListener("load", () => {
       selectedView() {
         return this.currentRecord;
       },
+      selectedViewStars() {
+        return this.stars(this.selectedView.rating);
+      },
       isCanvasEmpty() {
         return this.placedItems.length === 0 && !this.mainImageSrc;
       },
@@ -232,13 +646,21 @@ window.addEventListener("load", () => {
       },
     },
     mounted() {
+      this.handleSaveControl = (event) => {
+        const target = event.target.closest ? event.target : event.target.parentElement;
+        if (target?.closest(".save-action")) {
+          event.preventDefault();
+          this.saveCard();
+        }
+      };
+      document.addEventListener("click", this.handleSaveControl, true);
+      document.addEventListener("pointerdown", this.handleSaveControl, true);
+      this.loadSavedCards();
       this.loadRecords();
-      window.addEventListener("pointermove", this.dragSticker);
-      window.addEventListener("pointerup", this.stopStickerDrag);
     },
     beforeUnmount() {
-      window.removeEventListener("pointermove", this.dragSticker);
-      window.removeEventListener("pointerup", this.stopStickerDrag);
+      document.removeEventListener("click", this.handleSaveControl, true);
+      document.removeEventListener("pointerdown", this.handleSaveControl, true);
     },
     methods: {
       async apiFetch(url, options = {}) {
@@ -265,6 +687,21 @@ window.addEventListener("load", () => {
           }
         } finally {
           this.isLoading = false;
+        }
+      },
+      loadSavedCards() {
+        try {
+          const storedCards = JSON.parse(localStorage.getItem("deokkkuSavedCards") || "[]");
+          this.savedCards = Array.isArray(storedCards) ? storedCards : [];
+        } catch (error) {
+          this.savedCards = [];
+        }
+      },
+      persistSavedCards() {
+        try {
+          localStorage.setItem("deokkkuSavedCards", JSON.stringify(this.savedCards));
+        } catch (error) {
+          // 저장소를 사용할 수 없어도 현재 화면의 앨범 목록과 알림은 유지합니다.
         }
       },
       navIcon(item) {
@@ -363,7 +800,7 @@ window.addEventListener("load", () => {
       },
       addDecoration(sticker) {
         const nextId = Date.now();
-        this.placedItems.push({
+        const nextItem = {
           id: nextId,
           icon: sticker.icon,
           tone: sticker.tone,
@@ -371,7 +808,9 @@ window.addEventListener("load", () => {
           y: 20 + (this.placedItems.length * 17) % 56,
           rotate: -14 + (this.placedItems.length * 9) % 28,
           scale: sticker.icon.length > 1 ? 0.86 : 1.08,
-        });
+        };
+        this.placedItems.push(nextItem);
+        this.selectedDecorationId = nextId;
       },
       handleImageUpload(event) {
         const file = event.target.files?.[0];
@@ -379,7 +818,7 @@ window.addEventListener("load", () => {
         const reader = new FileReader();
         reader.onload = () => {
           const nextId = Date.now();
-          this.placedItems.push({
+          const nextItem = {
             id: nextId,
             icon: "",
             imageSrc: reader.result,
@@ -388,7 +827,9 @@ window.addEventListener("load", () => {
             y: 24 + (this.placedItems.length * 9) % 44,
             rotate: -6 + (this.placedItems.length * 5) % 14,
             scale: 1,
-          });
+          };
+          this.placedItems.push(nextItem);
+          this.selectedDecorationId = nextId;
           event.target.value = "";
         };
         reader.readAsDataURL(file);
@@ -404,7 +845,9 @@ window.addEventListener("load", () => {
           y: 34 + (this.placedItems.length * 7) % 36,
           rotate: -4 + (this.placedItems.length * 3) % 9,
           scale: 1,
+          fontSize: 15,
           width: 190,
+          height: 150,
         });
         this.selectedDecorationId = nextId;
       },
@@ -418,27 +861,6 @@ window.addEventListener("load", () => {
         };
         reader.readAsDataURL(file);
       },
-      startStickerDrag(event, sticker) {
-        event.preventDefault();
-        const rect = this.$refs.scrapbook.getBoundingClientRect();
-        this.draggingSticker = {
-          sticker,
-          rect,
-          offsetX: event.clientX - (rect.left + (sticker.x / 100) * rect.width),
-          offsetY: event.clientY - (rect.top + (sticker.y / 100) * rect.height),
-        };
-      },
-      dragSticker(event) {
-        if (!this.draggingSticker) return;
-        const { sticker, rect, offsetX, offsetY } = this.draggingSticker;
-        const nextX = ((event.clientX - offsetX - rect.left) / rect.width) * 100;
-        const nextY = ((event.clientY - offsetY - rect.top) / rect.height) * 100;
-        sticker.x = Math.max(2, Math.min(94, nextX));
-        sticker.y = Math.max(3, Math.min(90, nextY));
-      },
-      stopStickerDrag() {
-        this.draggingSticker = null;
-      },
       removeSticker(id) {
         this.placedItems = this.placedItems.filter((sticker) => sticker.id !== id);
         if (this.selectedDecorationId === id) {
@@ -446,25 +868,37 @@ window.addEventListener("load", () => {
         }
       },
       selectDecoration(id) {
-        this.selectedDecorationId = this.selectedDecorationId === id ? null : id;
+        this.selectedDecorationId = id;
+      },
+      clearDecorationSelection() {
+        this.selectedDecorationId = null;
+      },
+      runCanvasTool(tool) {
+        if (tool.action === "memo") {
+          this.addTextMemo();
+        }
       },
       clearStickers() {
         this.placedItems = [];
         this.selectedDecorationId = null;
       },
       saveCard() {
+        const now = Date.now();
+        if (now - this.lastSaveAt < 350) return;
+        this.lastSaveAt = now;
         const savedCard = {
-          id: Date.now(),
+          id: now,
           title: this.currentRecord.title || "제목 없는 기록",
           date: this.currentRecord.date,
           rating: this.currentRecord.rating,
           itemCount: this.placedItems.length + (this.mainImageSrc ? 1 : 0),
+          memoCount: this.placedItems.filter((item) => item.type === "text").length,
+          stickerCount: this.placedItems.filter((item) => item.type !== "text").length,
+          savedAt: new Date().toISOString(),
         };
         this.savedCards.unshift(savedCard);
-        this.toastMessage = "내 앨범에 저장되었습니다.";
-        window.setTimeout(() => {
-          this.toastMessage = "";
-        }, 1800);
+        this.toastMessage = "저장되었습니다";
+        this.persistSavedCards();
       },
     },
   }).mount("#app");

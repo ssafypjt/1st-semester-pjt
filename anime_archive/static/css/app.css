@@ -772,8 +772,15 @@ button {
 }
 
 .section-head {
+  position: relative;
+  align-items: center;
   justify-content: space-between;
   margin-bottom: 18px;
+  overflow: visible;
+}
+
+.section-head h2 {
+  margin: 0;
 }
 
 .tab-context {
@@ -801,7 +808,6 @@ button {
 }
 
 .section-head h2 {
-  margin: 0 0 16px;
   font-size: 24px;
 }
 
@@ -827,15 +833,20 @@ button {
 }
 
 .toolset {
-  gap: 9px;
-  flex-wrap: nowrap;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
   justify-content: flex-end;
   max-width: none;
+  overflow: visible;
+  position: relative;
+  z-index: 12;
 }
 
 .tool-action {
-  min-width: 98px;
+  min-width: 106px;
   height: 42px;
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -857,7 +868,9 @@ button {
 }
 
 .tool-action b {
+  display: inline-block;
   font-size: 13px;
+  line-height: 1;
 }
 
 .tool-action.danger {
@@ -866,10 +879,49 @@ button {
 }
 
 .tool-action.save-action {
-  min-width: 92px;
+  width: auto;
+  min-width: 96px;
   border: 0;
   color: #fff;
   flex: 0 0 auto;
+  overflow: visible;
+  background: linear-gradient(135deg, #8d63d0, #5f3aa8);
+  box-shadow: 0 12px 24px rgba(95, 58, 168, .25);
+}
+
+.tool-action.save-action .save-icon {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: 2px solid currentColor;
+  border-radius: 3px;
+  font-size: 0;
+  line-height: 1;
+  position: relative;
+}
+
+.tool-action.save-action .save-icon::before,
+.tool-action.save-action .save-icon::after {
+  content: "";
+  position: absolute;
+  background: currentColor;
+}
+
+.tool-action.save-action .save-icon::before {
+  width: 8px;
+  height: 4px;
+  top: 2px;
+  right: 2px;
+  border-radius: 1px;
+}
+
+.tool-action.save-action .save-icon::after {
+  width: 10px;
+  height: 5px;
+  left: 2px;
+  bottom: 2px;
+  border-radius: 1px 1px 0 0;
 }
 
 .scrapbook {
@@ -1154,23 +1206,38 @@ button {
   font-weight: 900;
 }
 
-.placed-sticker {
+.decoration-layer {
   position: absolute;
+  inset: 12px 16px;
   z-index: 8;
+  pointer-events: none;
+}
+
+.placed-decoration {
+  position: absolute;
+  z-index: 1;
+  min-width: 42px;
+  min-height: 42px;
+  user-select: none;
+  touch-action: none;
+  pointer-events: auto;
+}
+
+.placed-sticker {
+  position: relative;
   min-width: 42px;
   min-height: 42px;
   display: grid;
   place-items: center;
-  border: 2px solid rgba(63, 42, 74, .2);
-  border-radius: 12px;
+  border: 0;
+  border-radius: 0;
   padding: 7px 9px;
-  background: rgba(255,255,255,.78);
-  box-shadow: 0 10px 16px rgba(74, 52, 98, .14);
+  background: transparent;
+  box-shadow: none;
   color: #7452b1;
   font-size: 24px;
   line-height: 1;
-  user-select: none;
-  touch-action: none;
+  transform-origin: center;
 }
 
 .placed-sticker > span {
@@ -1196,14 +1263,10 @@ button {
   box-shadow: none;
 }
 
-.placed-sticker.custom-image::before {
-  top: -9px;
-}
-
-.delete-decoration {
+.delete-decoration,
+.rotate-decoration,
+.resize-decoration {
   position: absolute;
-  right: -10px;
-  top: -12px;
   z-index: 3;
   width: 24px;
   height: 24px;
@@ -1217,6 +1280,35 @@ button {
   font-size: 15px;
   font-weight: 900;
   line-height: 1;
+}
+
+.delete-decoration {
+  right: calc(-12px * var(--item-scale, 1));
+  top: calc(-12px * var(--item-scale, 1));
+}
+
+.rotate-decoration {
+  left: 50%;
+  top: calc(-24px * var(--item-scale, 1));
+  transform: translateX(-50%);
+  cursor: grab;
+  touch-action: none;
+}
+
+.resize-decoration {
+  right: calc(-16px * var(--item-scale, 1));
+  bottom: calc(-16px * var(--item-scale, 1));
+  z-index: 4;
+  width: 18px;
+  height: 18px;
+  border-radius: 8px;
+  border-radius: 50%;
+  border: 0;
+  background: #7b4ac7;
+  box-shadow: 0 5px 12px rgba(82, 48, 145, .24);
+  font-size: 0;
+  cursor: nwse-resize;
+  touch-action: none;
 }
 
 .placed-sticker.bubble {
@@ -1249,6 +1341,13 @@ button {
 .placed-sticker.memo-text {
   min-width: 120px;
   min-height: 92px;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: stretch;
+  gap: 8px;
   padding: 14px;
   border: 1px solid #d6cde4;
   border-radius: 4px;
@@ -1257,49 +1356,48 @@ button {
   box-shadow: 0 12px 18px rgba(74, 52, 98, .12);
 }
 
-.placed-sticker.memo-text::before {
-  width: 46px;
-  height: 16px;
-  top: -9px;
-  background:
-    linear-gradient(45deg, rgba(255,255,255,.45) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.45) 50%, rgba(255,255,255,.45) 75%, transparent 75%),
-    #d7b6ef;
-  background-size: 12px 12px;
+.memo-editor {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .placed-sticker.memo-text textarea {
   width: 100%;
-  min-height: 74px;
+  min-height: 0;
+  flex: 1;
   border: 0;
   outline: 0;
-  resize: vertical;
+  resize: none;
   background: transparent;
   color: #342a3f;
   font-weight: 800;
   line-height: 1.55;
 }
 
-.item-size {
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: -28px;
-  width: calc(100% - 24px);
+.memo-font-control {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px dashed #e3d7ed;
+  color: #6a5d78;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.memo-font-control input {
+  width: 100%;
   accent-color: #8d63d0;
 }
 
 .placed-sticker::before {
-  content: "";
-  position: absolute;
-  inset: -8px auto auto 50%;
-  width: 38px;
-  height: 14px;
-  border-radius: 3px;
-  background:
-    linear-gradient(45deg, rgba(255,255,255,.45) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.45) 50%, rgba(255,255,255,.45) 75%, transparent 75%),
-    #d7b6ef;
-  background-size: 12px 12px;
-  transform: translateX(-50%) rotate(-5deg);
+  content: none !important;
+  display: none !important;
 }
 
 .sticker-grid button.pink,
@@ -1330,6 +1428,17 @@ button {
 .placed-sticker.ink {
   color: #3f344a;
   background: #f8f4fb;
+}
+
+.placed-sticker.pink:not(.bubble):not(.frame):not(.bg),
+.placed-sticker.purple:not(.bubble):not(.frame):not(.bg),
+.placed-sticker.line:not(.bubble):not(.frame):not(.bg),
+.placed-sticker.soft:not(.bubble):not(.frame):not(.bg),
+.placed-sticker.ink:not(.bubble):not(.frame):not(.bg) {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 .cat-a {
@@ -1825,18 +1934,66 @@ button {
   font-weight: 750;
 }
 
-.toast {
+.save-popup-backdrop {
   position: fixed;
-  right: 34px;
-  bottom: 34px;
-  z-index: 40;
-  padding: 15px 18px;
+  inset: 0;
+  z-index: 45;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(46, 36, 56, .24);
+  backdrop-filter: blur(4px);
+}
+
+.save-popup {
+  width: min(360px, 100%);
+  display: grid;
+  gap: 12px;
+  padding: 26px;
   border: 1px solid #d9c8ea;
-  border-radius: 12px;
+  border-radius: 14px;
   color: #4f3c65;
-  background: #fff;
-  box-shadow: 0 16px 34px rgba(74, 52, 98, .18);
+  background:
+    linear-gradient(rgba(137, 101, 158, .05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(137, 101, 158, .05) 1px, transparent 1px),
+    #fffefa;
+  background-size: 18px 18px;
+  box-shadow: 0 22px 60px rgba(74, 52, 98, .24);
+  text-align: center;
+}
+
+.save-popup strong {
+  color: #3d314b;
+  font-size: 22px;
   font-weight: 900;
+}
+
+.save-popup p {
+  margin: 0;
+  color: #6f627d;
+  line-height: 1.55;
+  font-weight: 750;
+}
+
+.save-popup div {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.save-popup button {
+  border: 1px solid #e2d9ea;
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #51465d;
+  background: #fff;
+  font-weight: 900;
+}
+
+.save-popup button.primary {
+  border: 0;
+  color: #fff;
 }
 
 .modal-backdrop {
