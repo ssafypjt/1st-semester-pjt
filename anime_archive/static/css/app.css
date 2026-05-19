@@ -569,23 +569,24 @@ button {
 }
 
 .deokkku-mini {
-  width: 220px;
+  width: 240px;
   display: grid;
-  justify-items: start;
-  padding: 4px 8px 12px;
+  justify-items: center;
+  padding: 0 4px 14px;
   color: #553334;
 }
 
 .simple-logo-img {
   display: block;
-  width: 190px;
-  max-height: 82px;
+  width: 224px;
+  max-height: 124px;
   object-fit: contain;
-  margin: 0 0 8px -4px;
+  margin: 0;
+  filter: drop-shadow(0 8px 12px rgba(95, 62, 126, .1));
 }
 
-.simple-logo-img:not([style*="display: none"]) + span,
-.simple-logo-img:not([style*="display: none"]) + span + small {
+.simple-logo-img + span,
+.simple-logo-img + span + small {
   display: none;
 }
 
@@ -873,6 +874,14 @@ button {
   line-height: 1;
 }
 
+.tool-action:disabled {
+  cursor: default;
+  color: #a69aaf;
+  background: #f7f2fa;
+  box-shadow: none;
+  opacity: .72;
+}
+
 .tool-action.danger {
   color: #8a5570;
   background: #fff7fb;
@@ -959,6 +968,35 @@ button {
 .page h3 {
   margin: 8px 0 0;
   font-size: 26px;
+}
+
+.record-title-edit {
+  display: grid;
+  justify-items: start;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+}
+
+.record-title-edit strong {
+  margin: 8px 0 0;
+  font-size: 26px;
+  line-height: 1.2;
+}
+
+.record-title-edit:hover strong,
+.record-title-edit:focus-visible strong {
+  color: #6d48ba;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.record-title-edit:focus-visible {
+  outline: 2px solid #b99be0;
+  outline-offset: 5px;
+  border-radius: 6px;
 }
 
 .blank-guide {
@@ -1972,6 +2010,19 @@ button {
   box-shadow: 0 12px 24px rgba(75, 54, 99, .08);
 }
 
+.detail-card.clickable {
+  cursor: pointer;
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+
+.detail-card.clickable:hover,
+.detail-card.clickable:focus-visible {
+  border-color: #9873cf;
+  box-shadow: 0 16px 30px rgba(75, 54, 99, .13);
+  transform: translateY(-2px);
+  outline: 0;
+}
+
 .detail-card b {
   color: #3d314b;
   font-size: 18px;
@@ -1986,6 +2037,7 @@ button {
 
 .saved-card,
 .saved-empty {
+  position: relative;
   min-height: 160px;
   padding: 20px;
   border: 1px solid #e3d8eb;
@@ -1996,6 +2048,46 @@ button {
     #fffefa;
   background-size: 18px 18px;
   box-shadow: 0 12px 24px rgba(75, 54, 99, .08);
+}
+
+.saved-card {
+  padding-right: 54px;
+  cursor: pointer;
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+
+.saved-card-delete {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #e4d5e3;
+  border-radius: 8px;
+  color: #8a5570;
+  background: rgba(255,255,255,.86);
+  box-shadow: 0 7px 14px rgba(75, 54, 99, .08);
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 900;
+}
+
+.saved-card-delete:hover,
+.saved-card-delete:focus-visible {
+  border-color: #d99bb7;
+  color: #9d3f69;
+  background: #fff3f8;
+  outline: 0;
+}
+
+.saved-card:hover,
+.saved-card:focus-visible {
+  border-color: #9873cf;
+  box-shadow: 0 16px 30px rgba(75, 54, 99, .13);
+  transform: translateY(-2px);
+  outline: 0;
 }
 
 .saved-card small {
@@ -2074,6 +2166,8 @@ button {
 .save-popup button.primary {
   border: 0;
   color: #fff;
+  background: linear-gradient(135deg, var(--purple), var(--purple-dark));
+  box-shadow: 0 10px 22px rgba(134, 94, 203, .22);
 }
 
 .modal-backdrop {
@@ -2083,7 +2177,7 @@ button {
   display: grid;
   justify-items: center;
   align-items: start;
-  padding-top: clamp(28px, 8vh, 84px);
+  padding: clamp(112px, 18vh, 176px) clamp(24px, 6vw, 56px) 48px;
   background: rgba(46, 36, 56, .22);
   backdrop-filter: blur(5px);
   overflow-y: auto;

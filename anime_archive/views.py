@@ -54,8 +54,49 @@ MOOD_TAGS = {
 }
 
 
+def render_app(request, page="home", object_id=None):
+    return render(request, "index.html", {
+        "initial_route": {
+            "page": page,
+            "objectId": object_id,
+        },
+    })
+
+
 def home(request):
-    return render(request, "index.html")
+    return render_app(request, "home")
+
+
+def login_page(request):
+    return render_app(request, "login")
+
+
+def signup_page(request):
+    return render_app(request, "signup")
+
+
+def diary_list_page(request):
+    return render_app(request, "diary-list")
+
+
+def diary_detail_page(request, diary_id):
+    return render_app(request, "diary-detail", diary_id)
+
+
+def review_list_page(request):
+    return render_app(request, "review-list")
+
+
+def review_detail_page(request, review_id):
+    return render_app(request, "review-detail", review_id)
+
+
+def mypage(request):
+    return render_app(request, "mypage")
+
+
+def share_page(request, diary_id):
+    return render_app(request, "share", diary_id)
 
 
 def parse_json_body(request):

@@ -1,5 +1,7 @@
 window.addEventListener("load", () => {
   const { createApp } = Vue;
+  const initialRouteElement = document.getElementById("initial-route");
+  const initialRoute = initialRouteElement ? JSON.parse(initialRouteElement.textContent) : { page: "home" };
 
   const PanelCard = {
     props: ["title"],
@@ -24,6 +26,7 @@ window.addEventListener("load", () => {
           top: `${this.item.y}%`,
           width: this.item.width ? `${this.item.width}px` : null,
           height: this.item.height ? `${this.item.height}px` : null,
+          zIndex: this.item.zIndex || 1,
           "--item-scale": this.item.type === "text" ? 1 : this.item.scale || 1,
         };
       },
@@ -233,13 +236,20 @@ window.addEventListener("load", () => {
   const DiaryCanvas = {
     components: { "decoration-layer": DecorationLayer },
     props: ["selectedView", "starLabel", "isEmpty", "placedItems", "selectedDecorationId"],
-    emits: ["select-decoration", "clear-decoration", "remove-decoration"],
+    emits: ["edit-record", "select-decoration", "clear-decoration", "remove-decoration"],
     template: `
       <article class="scrapbook blank-scrapbook" @click.self="$emit('clear-decoration')">
         <div class="page left-page" @click="$emit('clear-decoration')">
-          <small>{{ selectedView.date }}</small>
-          <h3>{{ selectedView.title }}</h3>
-          <div class="stars">{{ starLabel }}</div>
+          <button
+            class="record-title-edit"
+            type="button"
+            title="기록 정보 수정"
+            @click.stop="$emit('edit-record')"
+          >
+            <small>{{ selectedView.date }}</small>
+            <strong>{{ selectedView.title }}</strong>
+            <span class="stars">{{ starLabel }}</span>
+          </button>
           <div v-if="isEmpty" class="blank-guide">
             <strong>빈 다이어리</strong>
             <span>오른쪽 도구에서 이미지, 메모, 스티커를 붙여 자유롭게 꾸며보세요.</span>
@@ -359,9 +369,11 @@ window.addEventListener("load", () => {
       "activeStickerCategory",
       "visibleDecorations",
       "aiTags",
+      "canUndo",
     ],
     emits: [
       "add-memo",
+      "undo",
       "save-card",
       "select-decoration",
       "clear-decoration",
@@ -370,6 +382,7 @@ window.addEventListener("load", () => {
       "change-sticker-category",
       "add-decoration",
       "image-upload",
+      "edit-record",
     ],
     template: `
       <div class="content-grid">
@@ -379,7 +392,13 @@ window.addEventListener("load", () => {
               <h2>내 기록</h2>
             </div>
             <div class="toolset">
-              <button class="tool-action" type="button" title="이전 작업으로 되돌리기"><span>↶</span><b>실행 취소</b></button>
+              <button
+                class="tool-action"
+                type="button"
+                :disabled="!canUndo"
+                @click="$emit('undo')"
+                title="이전 작업으로 되돌리기"
+              ><span>↶</span><b>실행 취소</b></button>
               <button class="tool-action memo-action" type="button" @click="$emit('add-memo')" title="움직일 수 있는 메모 추가"><span>T</span><b>메모 추가</b></button>
               <button
                 class="primary small tool-action save-action"
@@ -402,6 +421,7 @@ window.addEventListener("load", () => {
             @select-decoration="$emit('select-decoration', $event)"
             @clear-decoration="$emit('clear-decoration')"
             @remove-decoration="$emit('remove-decoration', $event)"
+            @edit-record="$emit('edit-record')"
           ></diary-canvas>
 
           <canvas-toolbar :tools="canvasTools" @run-tool="$emit('run-tool', $event)"></canvas-toolbar>
@@ -438,6 +458,8 @@ window.addEventListener("load", () => {
     data() {
       return {
         screen: "login",
+        routePage: initialRoute.page || "home",
+        routeObjectId: initialRoute.objectId || null,
         query: "",
         activePage: "홈",
         activeTab: "전체",
@@ -459,7 +481,10 @@ window.addEventListener("load", () => {
           date: "2026-05-18",
           rating: 0,
         },
+        recordModalMode: "create",
         savedCards: [],
+        undoHistory: [],
+        layerZIndex: 0,
         lastSaveAt: 0,
         toastMessage: "",
         login: {
@@ -467,7 +492,7 @@ window.addEventListener("load", () => {
           password: "",
           remember: false,
         },
-        nav: ["홈", "내 앨범", "보관함", "스티커샵", "탐색", "설정"],
+        nav: ["홈", "내 앨범", "기록 작성", "리뷰", "마이페이지"],
         tabs: ["전체", "시청 중", "완료", "보류", "찜 목록"],
         recentTags: ["감성애니", "인생작", "성장물", "힐링", "명작", "OST맛집"],
         canvasTools: [
@@ -604,12 +629,17 @@ window.addEventListener("load", () => {
       isCanvasEmpty() {
         return this.placedItems.length === 0 && !this.mainImageSrc;
       },
+      canUndo() {
+        return this.undoHistory.length > 0;
+      },
       tabDescription() {
         return this.selectedView.description || "선택한 기록 모음을 다이어리 카드로 미리 봅니다.";
       },
       pageDescription() {
         const descriptions = {
+          홈: "최근 기록과 이어서 작성할 다꾸를 빠르게 확인하는 대시보드입니다.",
           "내 앨범": "완성한 다이어리 기록을 앨범 단위로 모아보는 공간입니다.",
+          "기록 작성": "새 기록을 만들고 스티커, 이미지, 메모로 자유롭게 꾸밉니다.",
           보관함: "저장했지만 아직 공유하지 않은 카드와 임시 기록을 보관합니다.",
           스티커샵: "다꾸에 사용할 스티커, 프레임, 말풍선 세트를 관리합니다.",
           탐색: "작품명, 캐릭터, 태그로 기록과 애니메이션을 찾아봅니다.",
@@ -619,10 +649,20 @@ window.addEventListener("load", () => {
       },
       detailCards() {
         const cards = {
+          홈: [
+            { title: "최근 기록", body: "방금 저장했거나 최근 편집한 다꾸 기록을 빠르게 다시 엽니다.", action: "기록 작성" },
+            { title: "내 앨범 바로가기", body: "완성된 기록을 앨범 단위로 모아보고 이어서 확인합니다.", action: "내 앨범" },
+            { title: "기록 작성", body: "새로운 감상 기록을 만들고 꾸미기 화면으로 이동합니다.", action: "기록 작성" },
+          ],
           "내 앨범": [
             { title: "완성 카드", body: "저장한 다꾸 카드를 앨범별로 정리합니다." },
             { title: "최근 기록", body: "최근 편집한 기록을 빠르게 다시 열 수 있습니다." },
             { title: "하이라이트", body: "여러 기록을 모아 공유용 하이라이트로 만들 수 있습니다." },
+          ],
+          "기록 작성": [
+            { title: "꾸미기 캔버스", body: "이미지, 메모, 스티커를 배치해 감상 기록을 만듭니다." },
+            { title: "실행 취소", body: "스티커와 이미지를 추가하기 전 상태로 한 단계씩 되돌립니다." },
+            { title: "저장과 공유", body: "완성한 기록은 내 앨범에 저장하고 공유용 카드로 확인합니다." },
           ],
           보관함: [
             { title: "임시 저장", body: "편집 중인 기록을 안전하게 모아둡니다." },
@@ -650,6 +690,8 @@ window.addEventListener("load", () => {
       },
     },
     mounted() {
+      this.applyRoute(initialRoute.page || "home", initialRoute.objectId || null, false);
+      window.addEventListener("popstate", this.handlePopState);
       this.handleSaveControl = (event) => {
         const target = event.target.closest ? event.target : event.target.parentElement;
         if (target?.closest(".save-action")) {
@@ -663,10 +705,90 @@ window.addEventListener("load", () => {
       this.loadRecords();
     },
     beforeUnmount() {
+      window.removeEventListener("popstate", this.handlePopState);
       document.removeEventListener("click", this.handleSaveControl, true);
       document.removeEventListener("pointerdown", this.handleSaveControl, true);
     },
     methods: {
+      routeForPage(page, objectId = null) {
+        const routes = {
+          홈: "/deokkku/",
+          "내 앨범": "/deokkku/my_album/",
+          "기록 작성": `/diaries/${objectId || 0}/`,
+          리뷰: "/reviews/",
+          마이페이지: "/mypage/",
+          "공유 페이지": `/share/${objectId || 0}/`,
+        };
+        return routes[page] || "/";
+      },
+      routeNameForPage(page) {
+        return {
+          홈: "home",
+          "내 앨범": "diary-list",
+          "기록 작성": "diary-detail",
+          리뷰: "review-list",
+          마이페이지: "mypage",
+          "공유 페이지": "share",
+        }[page] || "home";
+      },
+      pageForRoute(routeName) {
+        return {
+          home: "홈",
+          "diary-list": "내 앨범",
+          "diary-detail": "기록 작성",
+          "review-list": "리뷰",
+          "review-detail": "리뷰",
+          mypage: "마이페이지",
+          share: "공유 페이지",
+        }[routeName] || "홈";
+      },
+      navigateRoute(routeName, objectId = null) {
+        this.applyRoute(routeName, objectId, true);
+      },
+      navigatePage(page) {
+        this.applyPage(page, true);
+      },
+      applyPage(page, push = true, objectId = null) {
+        this.screen = "dashboard";
+        this.activePage = page;
+        const routeName = this.routeNameForPage(page);
+        this.routePage = routeName;
+        this.routeObjectId = objectId;
+        if (push) {
+          window.history.pushState({ page: routeName, objectId }, "", this.routeForPage(page, objectId));
+        }
+      },
+      applyRoute(routeName, objectId = null, push = true) {
+        this.routePage = routeName;
+        this.routeObjectId = objectId;
+
+        if (routeName === "login" || routeName === "signup") {
+          this.screen = routeName;
+          if (push) {
+            window.history.pushState({ page: routeName, objectId }, "", `/${routeName}/`);
+          }
+          return;
+        }
+
+        const page = this.pageForRoute(routeName);
+        this.applyPage(page, push, objectId);
+      },
+      handlePopState(event) {
+        const state = event.state || {};
+        this.applyRoute(state.page || this.routeNameFromPath(window.location.pathname), state.objectId || null, false);
+      },
+      routeNameFromPath(pathname) {
+        if (pathname === "/login/") return "login";
+        if (pathname === "/signup/") return "signup";
+        if (pathname === "/deokkku/my_album/" || pathname === "/diaries/") return "diary-list";
+        if (pathname.startsWith("/diaries/")) return "diary-detail";
+        if (pathname === "/reviews/") return "review-list";
+        if (pathname.startsWith("/reviews/")) return "review-detail";
+        if (pathname === "/deokkku/" || pathname === "/deokku/") return "home";
+        if (pathname === "/mypage/") return "mypage";
+        if (pathname.startsWith("/share/")) return "share";
+        return "home";
+      },
       async apiFetch(url, options = {}) {
         const response = await fetch(url, {
           headers: {
@@ -701,6 +823,48 @@ window.addEventListener("load", () => {
           this.savedCards = [];
         }
       },
+      cloneForSave(value) {
+        return JSON.parse(JSON.stringify(value));
+      },
+      canvasSnapshot() {
+        return {
+          placedItems: this.cloneForSave(this.placedItems),
+          mainImageSrc: this.mainImageSrc,
+          selectedDecorationId: this.selectedDecorationId,
+        };
+      },
+      pushUndoState() {
+        this.undoHistory.push(this.canvasSnapshot());
+        if (this.undoHistory.length > 50) {
+          this.undoHistory.shift();
+        }
+      },
+      resetUndoHistory() {
+        this.undoHistory = [];
+      },
+      undoLastCanvasChange() {
+        const previousState = this.undoHistory.pop();
+        if (!previousState) return;
+        this.placedItems = this.cloneForSave(previousState.placedItems);
+        this.mainImageSrc = previousState.mainImageSrc || "";
+        this.selectedDecorationId = previousState.selectedDecorationId || null;
+        this.syncLayerZIndex();
+      },
+      currentMaxLayerZIndex() {
+        return this.placedItems.reduce((maxZIndex, item) => Math.max(maxZIndex, item.zIndex || 0), 0);
+      },
+      nextLayerZIndex() {
+        this.layerZIndex = Math.max(this.layerZIndex, this.currentMaxLayerZIndex()) + 1;
+        return this.layerZIndex;
+      },
+      syncLayerZIndex() {
+        this.layerZIndex = this.currentMaxLayerZIndex();
+      },
+      bringDecorationToFront(id) {
+        const item = this.placedItems.find((decoration) => decoration.id === id);
+        if (!item) return;
+        item.zIndex = this.nextLayerZIndex();
+      },
       persistSavedCards() {
         try {
           localStorage.setItem("deokkkuSavedCards", JSON.stringify(this.savedCards));
@@ -708,15 +872,24 @@ window.addEventListener("load", () => {
           // 저장소를 사용할 수 없어도 현재 화면의 앨범 목록과 알림은 유지합니다.
         }
       },
+      deleteSavedCard(cardId) {
+        this.savedCards = this.savedCards.filter((card) => card.id !== cardId);
+        this.persistSavedCards();
+      },
       navIcon(item) {
-        return {
+        const icons = {
           홈: "⌂",
           "내 앨범": "▧",
+          "기록 작성": "✎",
+          리뷰: "☰",
           보관함: "▣",
           스티커샵: "✿",
           탐색: "⌕",
+          마이페이지: "◌",
           설정: "⚙",
-        }[item];
+          "공유 페이지": "↗",
+        };
+        return icons[item] || "•";
       },
       stars(score) {
         const filled = Math.max(0, Math.min(5, Math.round(score / 2)));
@@ -734,13 +907,44 @@ window.addEventListener("load", () => {
         this.placedItems = [];
         this.mainImageSrc = "";
         this.selectedDecorationId = null;
+        this.resetUndoHistory();
+        this.syncLayerZIndex();
         await this.analyzeFromRecord(record);
       },
-      openRecordModal() {
+      async openSavedCard(card) {
+        const savedRecord = card.snapshot?.record || {
+          title: card.title,
+          date: card.date,
+          rating: card.rating,
+          memo: "",
+          tags: [],
+        };
+        const matchingIndex = this.records.findIndex((item) => (
+          item.title === savedRecord.title && item.date === savedRecord.date
+        ));
+
+        this.currentRecord = this.cloneForSave(savedRecord);
+        this.placedItems = this.cloneForSave(card.snapshot?.placedItems || []);
+        this.mainImageSrc = card.snapshot?.mainImageSrc || "";
+        this.selectedDecorationId = null;
+        this.selectedIndex = matchingIndex >= 0 ? matchingIndex : this.selectedIndex;
+        this.applyPage("기록 작성", true);
+        this.toastMessage = "";
+        this.resetUndoHistory();
+        this.syncLayerZIndex();
+
+        if (card.snapshot?.analysis) {
+          this.ai = this.cloneForSave(card.snapshot.analysis);
+        } else if (matchingIndex >= 0) {
+          await this.analyzeFromRecord(this.records[matchingIndex]);
+        }
+      },
+      openRecordModal(mode = "create") {
+        this.recordModalMode = mode;
         this.recordForm = {
-          title: "",
-          date: new Date().toISOString().slice(0, 10),
-          rating: 0,
+          title: mode === "edit" ? this.currentRecord.title : "",
+          date: mode === "edit" ? this.formatInputDate(this.currentRecord.date) : new Date().toISOString().slice(0, 10),
+          rating: mode === "edit" ? this.currentRecord.rating : 0,
         };
         this.isRecordModalOpen = true;
       },
@@ -751,6 +955,10 @@ window.addEventListener("load", () => {
         if (!value) return "";
         return value.replaceAll("-", ".");
       },
+      formatInputDate(value) {
+        if (!value) return new Date().toISOString().slice(0, 10);
+        return value.replaceAll(".", "-");
+      },
       createBlankRecord() {
         this.currentRecord = {
           title: this.recordForm.title || "제목 없는 기록",
@@ -759,9 +967,14 @@ window.addEventListener("load", () => {
           memo: "",
           tags: [],
         };
-        this.placedItems = [];
-        this.mainImageSrc = "";
-        this.selectedDecorationId = null;
+        if (this.recordModalMode !== "edit") {
+          this.placedItems = [];
+          this.mainImageSrc = "";
+          this.selectedDecorationId = null;
+          this.resetUndoHistory();
+          this.syncLayerZIndex();
+        }
+        this.applyPage("기록 작성", true);
         this.isRecordModalOpen = false;
       },
       openComposer() {
@@ -803,6 +1016,7 @@ window.addEventListener("load", () => {
         this.ai = data.analysis;
       },
       addDecoration(sticker) {
+        this.pushUndoState();
         const nextId = Date.now();
         const nextItem = {
           id: nextId,
@@ -812,6 +1026,7 @@ window.addEventListener("load", () => {
           y: 20 + (this.placedItems.length * 17) % 56,
           rotate: -14 + (this.placedItems.length * 9) % 28,
           scale: sticker.icon.length > 1 ? 0.86 : 1.08,
+          zIndex: this.nextLayerZIndex(),
         };
         this.placedItems.push(nextItem);
         this.selectedDecorationId = nextId;
@@ -821,6 +1036,7 @@ window.addEventListener("load", () => {
         if (!file) return;
         const reader = new FileReader();
         reader.onload = () => {
+          this.pushUndoState();
           const nextId = Date.now();
           const nextItem = {
             id: nextId,
@@ -831,6 +1047,7 @@ window.addEventListener("load", () => {
             y: 24 + (this.placedItems.length * 9) % 44,
             rotate: -6 + (this.placedItems.length * 5) % 14,
             scale: 1,
+            zIndex: this.nextLayerZIndex(),
           };
           this.placedItems.push(nextItem);
           this.selectedDecorationId = nextId;
@@ -839,6 +1056,7 @@ window.addEventListener("load", () => {
         reader.readAsDataURL(file);
       },
       addTextMemo() {
+        this.pushUndoState();
         const nextId = Date.now();
         this.placedItems.push({
           id: nextId,
@@ -852,6 +1070,7 @@ window.addEventListener("load", () => {
           fontSize: 15,
           width: 190,
           height: 150,
+          zIndex: this.nextLayerZIndex(),
         });
         this.selectedDecorationId = nextId;
       },
@@ -860,6 +1079,7 @@ window.addEventListener("load", () => {
         if (!file) return;
         const reader = new FileReader();
         reader.onload = () => {
+          this.pushUndoState();
           this.mainImageSrc = reader.result;
           event.target.value = "";
         };
@@ -873,6 +1093,7 @@ window.addEventListener("load", () => {
       },
       selectDecoration(id) {
         this.selectedDecorationId = id;
+        this.bringDecorationToFront(id);
       },
       clearDecorationSelection() {
         this.selectedDecorationId = null;
@@ -899,6 +1120,12 @@ window.addEventListener("load", () => {
           memoCount: this.placedItems.filter((item) => item.type === "text").length,
           stickerCount: this.placedItems.filter((item) => item.type !== "text").length,
           savedAt: new Date().toISOString(),
+          snapshot: {
+            record: this.cloneForSave(this.currentRecord),
+            placedItems: this.cloneForSave(this.placedItems),
+            mainImageSrc: this.mainImageSrc,
+            analysis: this.cloneForSave(this.ai),
+          },
         };
         this.savedCards.unshift(savedCard);
         this.toastMessage = "저장되었습니다";
