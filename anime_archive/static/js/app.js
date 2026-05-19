@@ -483,6 +483,7 @@ window.addEventListener("load", () => {
         },
         recordModalMode: "create",
         savedCards: [],
+        editingSavedCardId: null,
         undoHistory: [],
         layerZIndex: 0,
         lastSaveAt: 0,
@@ -712,7 +713,7 @@ window.addEventListener("load", () => {
     methods: {
       routeForPage(page, objectId = null) {
         const routes = {
-          홈: "/deokkku/",
+          홈: "/deokkku/home/",
           "내 앨범": "/deokkku/my_album/",
           "기록 작성": `/diaries/${objectId || 0}/`,
           리뷰: "/reviews/",
@@ -765,7 +766,8 @@ window.addEventListener("load", () => {
         if (routeName === "login" || routeName === "signup") {
           this.screen = routeName;
           if (push) {
-            window.history.pushState({ page: routeName, objectId }, "", `/${routeName}/`);
+            const authPath = routeName === "login" ? "/deokkku/login/" : "/deokkku/join/";
+            window.history.pushState({ page: routeName, objectId }, "", authPath);
           }
           return;
         }
@@ -778,13 +780,13 @@ window.addEventListener("load", () => {
         this.applyRoute(state.page || this.routeNameFromPath(window.location.pathname), state.objectId || null, false);
       },
       routeNameFromPath(pathname) {
-        if (pathname === "/login/") return "login";
-        if (pathname === "/signup/") return "signup";
+        if (pathname === "/deokkku/login/" || pathname === "/login/") return "login";
+        if (pathname === "/deokkku/join/" || pathname === "/signup/") return "signup";
         if (pathname === "/deokkku/my_album/" || pathname === "/diaries/") return "diary-list";
         if (pathname.startsWith("/diaries/")) return "diary-detail";
         if (pathname === "/reviews/") return "review-list";
         if (pathname.startsWith("/reviews/")) return "review-detail";
-        if (pathname === "/deokkku/" || pathname === "/deokku/") return "home";
+        if (pathname === "/deokkku/home/" || pathname === "/deokkku/" || pathname === "/deokku/") return "home";
         if (pathname === "/mypage/") return "mypage";
         if (pathname.startsWith("/share/")) return "share";
         return "home";
@@ -874,6 +876,9 @@ window.addEventListener("load", () => {
       },
       deleteSavedCard(cardId) {
         this.savedCards = this.savedCards.filter((card) => card.id !== cardId);
+        if (this.editingSavedCardId === cardId) {
+          this.editingSavedCardId = null;
+        }
         this.persistSavedCards();
       },
       navIcon(item) {
@@ -907,6 +912,7 @@ window.addEventListener("load", () => {
         this.placedItems = [];
         this.mainImageSrc = "";
         this.selectedDecorationId = null;
+        this.editingSavedCardId = null;
         this.resetUndoHistory();
         this.syncLayerZIndex();
         await this.analyzeFromRecord(record);
@@ -927,6 +933,7 @@ window.addEventListener("load", () => {
         this.placedItems = this.cloneForSave(card.snapshot?.placedItems || []);
         this.mainImageSrc = card.snapshot?.mainImageSrc || "";
         this.selectedDecorationId = null;
+        this.editingSavedCardId = card.id;
         this.selectedIndex = matchingIndex >= 0 ? matchingIndex : this.selectedIndex;
         this.applyPage("기록 작성", true);
         this.toastMessage = "";
@@ -971,6 +978,7 @@ window.addEventListener("load", () => {
           this.placedItems = [];
           this.mainImageSrc = "";
           this.selectedDecorationId = null;
+          this.editingSavedCardId = null;
           this.resetUndoHistory();
           this.syncLayerZIndex();
         }
@@ -1111,8 +1119,9 @@ window.addEventListener("load", () => {
         const now = Date.now();
         if (now - this.lastSaveAt < 350) return;
         this.lastSaveAt = now;
+        const existingCardId = this.editingSavedCardId;
         const savedCard = {
-          id: now,
+          id: existingCardId || now,
           title: this.currentRecord.title || "제목 없는 기록",
           date: this.currentRecord.date,
           rating: this.currentRecord.rating,
@@ -1127,7 +1136,17 @@ window.addEventListener("load", () => {
             analysis: this.cloneForSave(this.ai),
           },
         };
-        this.savedCards.unshift(savedCard);
+        if (existingCardId) {
+          const existingIndex = this.savedCards.findIndex((card) => card.id === existingCardId);
+          if (existingIndex >= 0) {
+            this.savedCards.splice(existingIndex, 1, savedCard);
+          } else {
+            this.savedCards.unshift(savedCard);
+          }
+        } else {
+          this.savedCards.unshift(savedCard);
+          this.editingSavedCardId = savedCard.id;
+        }
         this.toastMessage = "저장되었습니다";
         this.persistSavedCards();
       },

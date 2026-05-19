@@ -6,9 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>덕꾸 Deokkku</title>
     {{ initial_route|json_script:"initial-route" }}
-    <link rel="stylesheet" href="{% static 'css/app.css' %}?v=decoration-zindex-1" />
+    <link rel="stylesheet" href="{% static 'css/app.css' %}?v=simple-logo-3" />
     <script defer src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-    <script defer src="{% static 'js/app.js' %}?v=decoration-zindex-1"></script>
+    <script defer src="{% static 'js/app.js' %}?v=simple-logo-3"></script>
   </head>
   <body>
     <div id="app" v-cloak>
@@ -75,7 +75,7 @@
       <section v-else class="workspace">
         <aside class="sidebar">
           <button class="brand deokkku-mini" type="button" @click="navigateRoute('login')" aria-label="덕꾸 홈">
-            <img class="simple-logo-img" src="{% static 'images/main-logo.png' %}" alt="덕꾸 Deokkku 로고" />
+            <img class="simple-logo-img" src="{% static 'images/simple_logo.png' %}?v=2" alt="덕꾸 Deokkku 로고" />
             <span>덕꾸</span>
             <small>Deokkku</small>
           </button>

@@ -17,8 +17,11 @@ from .views import (
 
 
 urlpatterns = [
-    path("", home, name="home"),
+    path("", login_page, name="home"),
     path("deokkku/", home, name="deokkku_home"),
+    path("deokkku/home/", home, name="deokkku_home_page"),
+    path("deokkku/login/", login_page, name="deokkku_login"),
+    path("deokkku/join/", signup_page, name="deokkku_join"),
     path("login/", login_page, name="login"),
     path("signup/", signup_page, name="signup"),
     path("deokkku/my_album/", diary_list_page, name="diary_list"),
