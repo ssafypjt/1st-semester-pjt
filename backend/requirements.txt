@@ -1,0 +1,11 @@
+# Core (dev + prod)
+Django==5.0.6
+djangorestframework==3.15.1
+django-cors-headers==4.3.1
+django-environ==0.11.2
+Pillow==10.3.0
+whitenoise==6.6.0
+
+# Production only (uncomment when deploying)
+# gunicorn==22.0.0          # WSGI server (Linux)
+# psycopg[binary]==3.1.19   # PostgreSQL driver
