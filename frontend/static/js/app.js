@@ -310,12 +310,13 @@ window.addEventListener("load", () => {
         <div class="sticker-grid">
           <button
             v-for="sticker in decorations"
-            :key="sticker.icon"
+            :key="sticker.id || sticker.icon"
             :class="sticker.tone"
             type="button"
             @click="$emit('add-decoration', sticker)"
           >
-            {{ sticker.icon }}
+            <img v-if="sticker.imageSrc" :src="sticker.imageSrc" :alt="sticker.label || '스티커'" />
+            <span v-else>{{ sticker.icon }}</span>
           </button>
         </div>
         <p class="shop-help">스티커, 프레임, 말풍선, 아이콘을 붙인 뒤 드래그로 옮길 수 있어요.</p>
@@ -466,6 +467,10 @@ window.addEventListener("load", () => {
         activeStickerCategory: "전체",
         shareMode: "story",
         isLoading: false,
+        isAuthSubmitting: false,
+        isLoggingOut: false,
+        csrfToken: "",
+        authError: "",
         isRecordModalOpen: false,
         selectedDecorationId: null,
         mainImageSrc: "",
@@ -506,6 +511,7 @@ window.addEventListener("load", () => {
         ],
         stickerCategories: ["전체", "스티커", "프레임", "말풍선", "아이콘", "배경"],
         decorations: [
+          { id: "guineapig", icon: "guineapig", label: "기니피그", tone: "sticker-image guineapig-sticker", category: "스티커", imageSrc: "/static/images/guineapig.png?v=1" },
           { icon: "🎬", tone: "ink", category: "스티커" },
           { icon: "📔", tone: "purple", category: "스티커" },
           { icon: "✧", tone: "line", category: "스티커" },
@@ -792,26 +798,122 @@ window.addEventListener("load", () => {
         return "home";
       },
       async apiFetch(url, options = {}) {
+        const method = (options.method || "GET").toUpperCase();
+        const headers = {
+          "Content-Type": "application/json",
+          ...(options.headers || {}),
+        };
+        if (!["GET", "HEAD", "OPTIONS", "TRACE"].includes(method)) {
+          headers["X-CSRFToken"] = await this.getCsrfToken();
+        }
         const response = await fetch(url, {
-          headers: {
-            "Content-Type": "application/json",
-            ...(options.headers || {}),
-          },
+          credentials: "same-origin",
+          headers,
           ...options,
         });
         if (!response.ok) {
-          throw new Error(`API 요청 실패: ${response.status}`);
+          let message = `API 요청 실패: ${response.status}`;
+          try {
+            const errorData = await response.json();
+            message = errorData.detail || Object.values(errorData).flat().join(" ") || message;
+          } catch (error) {
+            // Keep the status-based message when the server does not return JSON.
+          }
+          throw new Error(message);
         }
         return response.json();
+      },
+      async getCsrfToken() {
+        if (this.csrfToken) return this.csrfToken;
+        const response = await fetch("/api/auth/csrf/", {
+          credentials: "same-origin",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+        if (!response.ok) {
+          throw new Error("CSRF 토큰을 가져오지 못했습니다.");
+        }
+        const data = await response.json();
+        this.csrfToken = data.csrfToken || "";
+        return this.csrfToken;
+      },
+      async submitLogin() {
+        this.authError = "";
+        const email = this.login.email.trim();
+        const password = this.login.password;
+
+        if (!email || !password) {
+          this.authError = "이메일과 비밀번호를 입력해주세요.";
+          return;
+        }
+
+        this.isAuthSubmitting = true;
+        try {
+          await this.apiFetch("/api/auth/login/", {
+            method: "POST",
+            body: JSON.stringify({ email, password }),
+          });
+          this.navigateRoute("home");
+        } catch (error) {
+          this.authError = error.message || "로그인에 실패했습니다.";
+        } finally {
+          this.isAuthSubmitting = false;
+        }
+      },
+      async logout() {
+        if (this.isLoggingOut) return;
+        this.isLoggingOut = true;
+        try {
+          await this.apiFetch("/api/auth/logout/", {
+            method: "POST",
+            body: JSON.stringify({}),
+          });
+        } catch (error) {
+          // If the session is already gone, return to login anyway.
+        } finally {
+          this.isLoggingOut = false;
+          this.login.password = "";
+          this.navigateRoute("login");
+        }
+      },
+      normalizeBackendRecord(record) {
+        const rawDate = record.date || record.watched_date || (record.created_at || "").slice(0, 10);
+        const displayDate = rawDate ? rawDate.replaceAll("-", ".") : "";
+        const title = record.title || record.anime_title || record.anime?.title_ko || record.anime?.title || "새 감상 기록";
+        const tags = Array.isArray(record.tags) ? record.tags : [
+          record.visibility,
+          record.status,
+        ].filter(Boolean);
+
+        return {
+          id: record.id,
+          date: displayDate,
+          title,
+          memo: record.memo || record.content || "",
+          rating: Number(record.rating || 0),
+          tags,
+          count: record.count || record.like_count || 0,
+          cover: record.cover || record.anime_poster || "linear-gradient(160deg, #b99be0, #ffd1e4)",
+          raw: record,
+        };
       },
       async loadRecords() {
         this.isLoading = true;
         try {
           const data = await this.apiFetch("/api/records/");
-          this.records = data.records;
+          const records = data.records || data.results || (Array.isArray(data) ? data : []);
+          this.records = records.map(this.normalizeBackendRecord);
           this.selectedIndex = 0;
           if (this.records.length) {
-            await this.analyzeFromRecord(this.records[0]);
+            try {
+              await this.analyzeFromRecord(this.records[0]);
+            } catch (error) {
+              this.ai = {
+                ...defaultAnalysis,
+                tags: [...this.records[0].tags, "명장면", "공유하기"],
+              };
+            }
           }
         } finally {
           this.isLoading = false;
@@ -1030,10 +1132,11 @@ window.addEventListener("load", () => {
           id: nextId,
           icon: sticker.icon,
           tone: sticker.tone,
+          imageSrc: sticker.imageSrc || null,
           x: 24 + (this.placedItems.length * 11) % 52,
           y: 20 + (this.placedItems.length * 17) % 56,
           rotate: -14 + (this.placedItems.length * 9) % 28,
-          scale: sticker.icon.length > 1 ? 0.86 : 1.08,
+          scale: sticker.imageSrc ? 0.72 : sticker.icon.length > 1 ? 0.86 : 1.08,
           zIndex: this.nextLayerZIndex(),
         };
         this.placedItems.push(nextItem);

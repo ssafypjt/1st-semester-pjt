@@ -68,6 +68,7 @@ TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
         'DIRS': [
+            FRONTEND_DIR / 'templates',
             BASE_DIR / 'templates',
             FRONTEND_DIR / 'dist',
         ],
@@ -114,7 +115,9 @@ USE_TZ = True
 # ── 정적 / 미디어 ──────────────────────────────────
 STATIC_URL = '/static/'
 _vite_dist = FRONTEND_DIR / 'dist'
-STATICFILES_DIRS = [_vite_dist] if _vite_dist.exists() else []
+STATICFILES_DIRS = [FRONTEND_DIR / 'static']
+if _vite_dist.exists():
+    STATICFILES_DIRS.append(_vite_dist)
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 

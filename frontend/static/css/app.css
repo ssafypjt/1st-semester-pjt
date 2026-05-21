@@ -225,6 +225,13 @@ button {
   font-weight: 700;
 }
 
+.auth-error {
+  margin: -10px 0 12px;
+  color: #b42318;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .primary {
   border: 0;
   border-radius: 8px;
@@ -736,6 +743,20 @@ button {
 
 .top-actions {
   gap: 18px;
+}
+
+.logout-btn {
+  height: 42px;
+  padding: 0 14px;
+  border: 1px solid #e2d9ea;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--purple-dark);
+  font-weight: 800;
+}
+
+.logout-btn:disabled {
+  opacity: .65;
 }
 
 .icon-btn,
@@ -1301,6 +1322,22 @@ button {
   box-shadow: none;
 }
 
+.placed-sticker.sticker-image {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.placed-sticker.sticker-image img {
+  width: 150px;
+  height: 150px;
+  object-fit: contain;
+  border: 0;
+  border-radius: 0;
+  box-shadow: 0 8px 14px rgba(74, 52, 98, .12);
+}
+
 .delete-decoration,
 .rotate-decoration,
 .resize-decoration {
@@ -1665,11 +1702,22 @@ button {
 .sticker-grid button {
   width: 100%;
   height: 68px;
+  display: grid;
+  place-items: center;
   border: 1px solid #e4dce9;
   border-radius: 8px;
   background: #fff;
   color: #8061bb;
   font-size: 29px;
+  overflow: hidden;
+}
+
+.sticker-grid button img {
+  display: block;
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  pointer-events: none;
 }
 
 .sticker-grid button.bubble,
