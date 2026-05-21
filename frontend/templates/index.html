@@ -6,9 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>덕꾸 Deokkku</title>
     {{ initial_route|json_script:"initial-route" }}
-    <link rel="stylesheet" href="{% static 'css/app.css' %}?v=auth-logout-2" />
+    <link rel="stylesheet" href="{% static 'css/app.css' %}?v=signup-auth-3" />
     <script defer src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-    <script defer src="{% static 'js/app.js' %}?v=auth-logout-2"></script>
+    <script defer src="{% static 'js/app.js' %}?v=signup-auth-3"></script>
   </head>
   <body>
     <div id="app" v-cloak>
@@ -34,20 +34,25 @@
               <input type="email" placeholder="이메일 주소" v-model="login.email" />
               <b>✉</b>
             </label>
+            <label v-if="screen === 'signup'" class="field">
+              <span>◇</span>
+              <input type="text" placeholder="닉네임" v-model="login.nickname" />
+              <b>✎</b>
+            </label>
             <label class="field">
               <span>▣</span>
               <input type="password" placeholder="비밀번호" v-model="login.password" />
               <b>◌</b>
             </label>
 
-            <div class="login-options">
+            <div v-if="screen === 'login'" class="login-options">
               <label><input type="checkbox" v-model="login.remember" /> 로그인 상태 유지</label>
               <button type="button">비밀번호 찾기</button>
             </div>
 
             <p v-if="authError" class="auth-error">[[ authError ]]</p>
-            <button class="primary full" type="button" @click="submitLogin" :disabled="isAuthSubmitting">
-              [[ isAuthSubmitting ? '확인 중...' : '로그인' ]]
+            <button class="primary full" type="button" @click="screen === 'signup' ? submitSignup() : submitLogin()" :disabled="isAuthSubmitting">
+              [[ isAuthSubmitting ? '확인 중...' : (screen === 'signup' ? '회원가입' : '로그인') ]]
             </button>
 
             <div class="divider"><span>또는</span></div>

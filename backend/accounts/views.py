@@ -5,6 +5,7 @@ JWT 로의 전환은 모바일 앱이 생기는 시점에 검토.
 """
 from django.contrib.auth import authenticate, login, logout
 from django.middleware.csrf import get_token
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -20,6 +21,7 @@ def csrf(request):
     return Response({'csrfToken': get_token(request)})
 
 
+@csrf_exempt
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def signup(request):
@@ -35,6 +37,7 @@ def signup(request):
                     status=status.HTTP_201_CREATED)
 
 
+@csrf_exempt
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_view(request):
@@ -53,6 +56,7 @@ def login_view(request):
     return Response(UserSerializer(user).data)
 
 
+@csrf_exempt
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def logout_view(request):

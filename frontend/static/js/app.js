@@ -488,6 +488,7 @@ window.addEventListener("load", () => {
         },
         recordModalMode: "create",
         savedCards: [],
+        currentUserEmail: "",
         editingSavedCardId: null,
         undoHistory: [],
         layerZIndex: 0,
@@ -495,6 +496,7 @@ window.addEventListener("load", () => {
         toastMessage: "",
         login: {
           email: "",
+          nickname: "",
           password: "",
           remember: false,
         },
@@ -803,14 +805,23 @@ window.addEventListener("load", () => {
           "Content-Type": "application/json",
           ...(options.headers || {}),
         };
-        if (!["GET", "HEAD", "OPTIONS", "TRACE"].includes(method)) {
+        const needsCsrf = !["GET", "HEAD", "OPTIONS", "TRACE"].includes(method);
+        if (needsCsrf) {
           headers["X-CSRFToken"] = await this.getCsrfToken();
         }
-        const response = await fetch(url, {
+        let response = await fetch(url, {
           credentials: "same-origin",
           headers,
           ...options,
         });
+        if (!response.ok && response.status === 403 && needsCsrf) {
+          headers["X-CSRFToken"] = await this.getCsrfToken(true);
+          response = await fetch(url, {
+            credentials: "same-origin",
+            headers,
+            ...options,
+          });
+        }
         if (!response.ok) {
           let message = `API 요청 실패: ${response.status}`;
           try {
@@ -823,10 +834,11 @@ window.addEventListener("load", () => {
         }
         return response.json();
       },
-      async getCsrfToken() {
-        if (this.csrfToken) return this.csrfToken;
+      async getCsrfToken(forceRefresh = false) {
+        if (this.csrfToken && !forceRefresh) return this.csrfToken;
         const response = await fetch("/api/auth/csrf/", {
           credentials: "same-origin",
+          cache: "no-store",
           headers: {
             "Content-Type": "application/json",
           },
@@ -850,13 +862,46 @@ window.addEventListener("load", () => {
 
         this.isAuthSubmitting = true;
         try {
-          await this.apiFetch("/api/auth/login/", {
+          const user = await this.apiFetch("/api/auth/login/", {
             method: "POST",
             body: JSON.stringify({ email, password }),
           });
+          this.currentUserEmail = user.email || email;
+          this.csrfToken = "";
+          this.loadSavedCards();
+          await this.loadRecords();
           this.navigateRoute("home");
         } catch (error) {
           this.authError = error.message || "로그인에 실패했습니다.";
+        } finally {
+          this.isAuthSubmitting = false;
+        }
+      },
+      async submitSignup() {
+        this.authError = "";
+        const email = this.login.email.trim();
+        const nickname = this.login.nickname.trim();
+        const password = this.login.password;
+
+        if (!email || !nickname || !password) {
+          this.authError = "이메일, 닉네임, 비밀번호를 모두 입력해주세요.";
+          return;
+        }
+
+        this.isAuthSubmitting = true;
+        try {
+          const user = await this.apiFetch("/api/auth/signup/", {
+            method: "POST",
+            body: JSON.stringify({ email, nickname, password }),
+          });
+          this.currentUserEmail = user.email || email;
+          this.csrfToken = "";
+          this.loadSavedCards();
+          await this.loadRecords();
+          this.selectedIndex = 0;
+          this.navigateRoute("home");
+        } catch (error) {
+          this.authError = error.message || "회원가입에 실패했습니다.";
         } finally {
           this.isAuthSubmitting = false;
         }
@@ -873,6 +918,10 @@ window.addEventListener("load", () => {
           // If the session is already gone, return to login anyway.
         } finally {
           this.isLoggingOut = false;
+          this.csrfToken = "";
+          this.currentUserEmail = "";
+          this.records = [];
+          this.savedCards = [];
           this.login.password = "";
           this.navigateRoute("login");
         }
@@ -919,9 +968,13 @@ window.addEventListener("load", () => {
           this.isLoading = false;
         }
       },
+      savedCardsKey() {
+        const owner = this.currentUserEmail || "guest";
+        return `deokkkuSavedCards:${owner}`;
+      },
       loadSavedCards() {
         try {
-          const storedCards = JSON.parse(localStorage.getItem("deokkkuSavedCards") || "[]");
+          const storedCards = JSON.parse(localStorage.getItem(this.savedCardsKey()) || "[]");
           this.savedCards = Array.isArray(storedCards) ? storedCards : [];
         } catch (error) {
           this.savedCards = [];
@@ -971,7 +1024,7 @@ window.addEventListener("load", () => {
       },
       persistSavedCards() {
         try {
-          localStorage.setItem("deokkkuSavedCards", JSON.stringify(this.savedCards));
+          localStorage.setItem(this.savedCardsKey(), JSON.stringify(this.savedCards));
         } catch (error) {
           // 저장소를 사용할 수 없어도 현재 화면의 앨범 목록과 알림은 유지합니다.
         }
