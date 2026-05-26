@@ -10,10 +10,14 @@
   /media/ 의 직접 서빙은 DEBUG=True 인 경우에만 활성화한다.
 """
 from pathlib import Path
+import mimetypes
 import environ
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = BASE_DIR.parent / 'frontend'
+
+mimetypes.add_type('application/javascript', '.js', True)
+mimetypes.add_type('text/css', '.css', True)
 
 # ── env ─────────────────────────────────────────────
 env = environ.Env(
@@ -115,9 +119,10 @@ USE_TZ = True
 # ── 정적 / 미디어 ──────────────────────────────────
 STATIC_URL = '/static/'
 _vite_dist = FRONTEND_DIR / 'dist'
-STATICFILES_DIRS = [FRONTEND_DIR / 'static']
-if _vite_dist.exists():
-    STATICFILES_DIRS.append(_vite_dist)
+STATICFILES_DIRS = [
+    FRONTEND_DIR / 'static',
+    _vite_dist,
+]
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
@@ -142,13 +147,23 @@ REST_FRAMEWORK = {
 # ── CORS / CSRF ────────────────────────────────────
 CORS_ALLOWED_ORIGINS = env.list(
     'CORS_ALLOWED_ORIGINS',
-    default=['http://localhost:5173', 'http://127.0.0.1:5173'],
+    default=[
+        'http://localhost:5173',
+        'http://localhost:5174',
+        'http://127.0.0.1:5173',
+        'http://127.0.0.1:5174',
+    ],
 )
 CORS_ALLOW_CREDENTIALS = True
 
 CSRF_TRUSTED_ORIGINS = env.list(
     'CSRF_TRUSTED_ORIGINS',
-    default=['http://localhost:5173', 'http://127.0.0.1:5173'],
+    default=[
+        'http://localhost:5173',
+        'http://localhost:5174',
+        'http://127.0.0.1:5173',
+        'http://127.0.0.1:5174',
+    ],
 )
 
 # ── 배포 보안 (DEBUG=False 일 때만 의미) ───────────

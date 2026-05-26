@@ -5,8 +5,9 @@ from django.contrib import admin
 from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
+from django.views.generic import RedirectView
 from django.views.generic import TemplateView
 
 
@@ -88,6 +89,17 @@ class FrontendAppView(TemplateView):
         except ValueError:
             return None
 
+
+class DistFrontendAppView(TemplateView):
+    def get(self, request, *args, **kwargs):
+        index_path = settings.FRONTEND_DIR / 'dist' / 'index.html'
+        if index_path.exists():
+            return HttpResponse(
+                index_path.read_text(encoding='utf-8'),
+                content_type='text/html; charset=utf-8',
+            )
+        return FrontendAppView.as_view()(request, *args, **kwargs)
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/auth/', include('accounts.urls')),
@@ -95,6 +107,11 @@ urlpatterns = [
     path('api/animes/', include('animes.urls')),
     path('api/albums/', include('albums.urls')),
     path('api/records/', include('records.urls')),
+    path('', RedirectView.as_view(url='/deokkku/login/', permanent=False), name='home'),
+    path('login/', FrontendAppView.as_view(), name='login-page'),
+    path('signup/', FrontendAppView.as_view(), name='signup-page'),
+    path('deokkku/login/', FrontendAppView.as_view(), name='deokkku-login-page'),
+    path('deokkku/join/', FrontendAppView.as_view(), name='deokkku-join-page'),
 ]
 
 if settings.DEBUG:
@@ -103,6 +120,6 @@ if settings.DEBUG:
 # Vue SPA fallback - 모든 비-API 경로를 index.html로 라우팅
 urlpatterns += [
     re_path(r'^(?!api/|admin/|static/|media/).*$',
-            FrontendAppView.as_view(),
+            DistFrontendAppView.as_view(),
             name='spa'),
 ]
