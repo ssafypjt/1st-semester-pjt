@@ -127,37 +127,15 @@
 
 .share-card-logo-wrapper {
   display: inline-flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  width: 86px;
-  color: var(--share-accent);
-  font-size: 13px;
-  font-weight: 950;
-  opacity: .82;
-  line-height: 1;
-  text-align: center;
+  width: 104px;
+  min-height: 54px;
   position: relative;
 }
 
-.share-card-logo-wrapper b {
-  font: inherit;
-  width: 86px;
-}
-
-.share-card-logo-wrapper::before {
-  content: "*";
-  position: absolute;
-  left: -18px;
-  top: 4px;
-  color: var(--share-accent);
-  font-size: 18px;
-  opacity: .72;
-}
-
 .share-card-logo {
-  width: 80px;
+  width: 104px;
   height: auto;
   display: block;
   object-fit: contain;
@@ -165,10 +143,7 @@
   border: 0;
   border-radius: 0;
   box-shadow: none;
-  mix-blend-mode: multiply;
-  opacity: .9;
-  transform: scale(1.45);
-  transform-origin: center;
+  opacity: .96;
 }
 
 .share-card-visual {
