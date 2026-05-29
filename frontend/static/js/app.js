@@ -1511,7 +1511,7 @@ window.addEventListener("load", () => {
       async downloadShareCard() {
         const target = this.$refs.shareCard;
         if (!target || !window.html2canvas) {
-          console.log("share card image save requested", this.shareCard);
+          console.log("share card image save requested, but html2canvas is unavailable", this.shareCard);
           return;
         }
         try {
