@@ -54,6 +54,7 @@ def login_view(request):
     return Response(UserSerializer(user, context={'request': request}).data)
 
 
+@csrf_exempt
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def logout_view(request):

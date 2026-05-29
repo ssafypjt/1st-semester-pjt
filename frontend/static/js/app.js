@@ -310,12 +310,13 @@ window.addEventListener("load", () => {
         <div class="sticker-grid">
           <button
             v-for="sticker in decorations"
-            :key="sticker.icon"
+            :key="sticker.id || sticker.icon"
             :class="sticker.tone"
             type="button"
             @click="$emit('add-decoration', sticker)"
           >
-            {{ sticker.icon }}
+            <img v-if="sticker.imageSrc" :src="sticker.imageSrc" :alt="sticker.label || '스티커'" />
+            <span v-else>{{ sticker.icon }}</span>
           </button>
         </div>
         <p class="shop-help">스티커, 프레임, 말풍선, 아이콘을 붙인 뒤 드래그로 옮길 수 있어요.</p>
@@ -466,6 +467,10 @@ window.addEventListener("load", () => {
         activeStickerCategory: "전체",
         shareMode: "story",
         isLoading: false,
+        isAuthSubmitting: false,
+        isLoggingOut: false,
+        csrfToken: "",
+        authError: "",
         isRecordModalOpen: false,
         selectedDecorationId: null,
         mainImageSrc: "",
@@ -483,12 +488,15 @@ window.addEventListener("load", () => {
         },
         recordModalMode: "create",
         savedCards: [],
+        currentUserEmail: "",
+        editingSavedCardId: null,
         undoHistory: [],
         layerZIndex: 0,
         lastSaveAt: 0,
         toastMessage: "",
         login: {
           email: "",
+          nickname: "",
           password: "",
           remember: false,
         },
@@ -505,6 +513,7 @@ window.addEventListener("load", () => {
         ],
         stickerCategories: ["전체", "스티커", "프레임", "말풍선", "아이콘", "배경"],
         decorations: [
+          { id: "guineapig", icon: "guineapig", label: "기니피그", tone: "sticker-image guineapig-sticker", category: "스티커", imageSrc: "/static/images/guineapig.png?v=1" },
           { icon: "🎬", tone: "ink", category: "스티커" },
           { icon: "📔", tone: "purple", category: "스티커" },
           { icon: "✧", tone: "line", category: "스티커" },
@@ -712,7 +721,7 @@ window.addEventListener("load", () => {
     methods: {
       routeForPage(page, objectId = null) {
         const routes = {
-          홈: "/deokkku/",
+          홈: "/deokkku/home/",
           "내 앨범": "/deokkku/my_album/",
           "기록 작성": `/diaries/${objectId || 0}/`,
           리뷰: "/reviews/",
@@ -765,7 +774,8 @@ window.addEventListener("load", () => {
         if (routeName === "login" || routeName === "signup") {
           this.screen = routeName;
           if (push) {
-            window.history.pushState({ page: routeName, objectId }, "", `/${routeName}/`);
+            const authPath = routeName === "login" ? "/deokkku/login/" : "/deokkku/join/";
+            window.history.pushState({ page: routeName, objectId }, "", authPath);
           }
           return;
         }
@@ -778,46 +788,193 @@ window.addEventListener("load", () => {
         this.applyRoute(state.page || this.routeNameFromPath(window.location.pathname), state.objectId || null, false);
       },
       routeNameFromPath(pathname) {
-        if (pathname === "/login/") return "login";
-        if (pathname === "/signup/") return "signup";
+        if (pathname === "/deokkku/login/" || pathname === "/login/") return "login";
+        if (pathname === "/deokkku/join/" || pathname === "/signup/") return "signup";
         if (pathname === "/deokkku/my_album/" || pathname === "/diaries/") return "diary-list";
         if (pathname.startsWith("/diaries/")) return "diary-detail";
         if (pathname === "/reviews/") return "review-list";
         if (pathname.startsWith("/reviews/")) return "review-detail";
-        if (pathname === "/deokkku/" || pathname === "/deokku/") return "home";
+        if (pathname === "/deokkku/home/" || pathname === "/deokkku/" || pathname === "/deokku/") return "home";
         if (pathname === "/mypage/") return "mypage";
         if (pathname.startsWith("/share/")) return "share";
         return "home";
       },
       async apiFetch(url, options = {}) {
-        const response = await fetch(url, {
-          headers: {
-            "Content-Type": "application/json",
-            ...(options.headers || {}),
-          },
+        const method = (options.method || "GET").toUpperCase();
+        const headers = {
+          "Content-Type": "application/json",
+          ...(options.headers || {}),
+        };
+        const needsCsrf = !["GET", "HEAD", "OPTIONS", "TRACE"].includes(method);
+        if (needsCsrf) {
+          headers["X-CSRFToken"] = await this.getCsrfToken();
+        }
+        let response = await fetch(url, {
+          credentials: "same-origin",
+          headers,
           ...options,
         });
+        if (!response.ok && response.status === 403 && needsCsrf) {
+          headers["X-CSRFToken"] = await this.getCsrfToken(true);
+          response = await fetch(url, {
+            credentials: "same-origin",
+            headers,
+            ...options,
+          });
+        }
         if (!response.ok) {
-          throw new Error(`API 요청 실패: ${response.status}`);
+          let message = `API 요청 실패: ${response.status}`;
+          try {
+            const errorData = await response.json();
+            message = errorData.detail || Object.values(errorData).flat().join(" ") || message;
+          } catch (error) {
+            // Keep the status-based message when the server does not return JSON.
+          }
+          throw new Error(message);
         }
         return response.json();
+      },
+      async getCsrfToken(forceRefresh = false) {
+        if (this.csrfToken && !forceRefresh) return this.csrfToken;
+        const response = await fetch("/api/auth/csrf/", {
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+        if (!response.ok) {
+          throw new Error("CSRF 토큰을 가져오지 못했습니다.");
+        }
+        const data = await response.json();
+        this.csrfToken = data.csrfToken || "";
+        return this.csrfToken;
+      },
+      async submitLogin() {
+        this.authError = "";
+        const email = this.login.email.trim();
+        const password = this.login.password;
+
+        if (!email || !password) {
+          this.authError = "이메일과 비밀번호를 입력해주세요.";
+          return;
+        }
+
+        this.isAuthSubmitting = true;
+        try {
+          const user = await this.apiFetch("/api/auth/login/", {
+            method: "POST",
+            body: JSON.stringify({ email, password }),
+          });
+          this.currentUserEmail = user.email || email;
+          this.csrfToken = "";
+          this.loadSavedCards();
+          await this.loadRecords();
+          this.navigateRoute("home");
+        } catch (error) {
+          this.authError = error.message || "로그인에 실패했습니다.";
+        } finally {
+          this.isAuthSubmitting = false;
+        }
+      },
+      async submitSignup() {
+        this.authError = "";
+        const email = this.login.email.trim();
+        const nickname = this.login.nickname.trim();
+        const password = this.login.password;
+
+        if (!email || !nickname || !password) {
+          this.authError = "이메일, 닉네임, 비밀번호를 모두 입력해주세요.";
+          return;
+        }
+
+        this.isAuthSubmitting = true;
+        try {
+          const user = await this.apiFetch("/api/auth/signup/", {
+            method: "POST",
+            body: JSON.stringify({ email, nickname, password }),
+          });
+          this.currentUserEmail = user.email || email;
+          this.csrfToken = "";
+          this.loadSavedCards();
+          await this.loadRecords();
+          this.selectedIndex = 0;
+          this.navigateRoute("home");
+        } catch (error) {
+          this.authError = error.message || "회원가입에 실패했습니다.";
+        } finally {
+          this.isAuthSubmitting = false;
+        }
+      },
+      async logout() {
+        if (this.isLoggingOut) return;
+        this.isLoggingOut = true;
+        try {
+          await this.apiFetch("/api/auth/logout/", {
+            method: "POST",
+            body: JSON.stringify({}),
+          });
+        } catch (error) {
+          // If the session is already gone, return to login anyway.
+        } finally {
+          this.isLoggingOut = false;
+          this.csrfToken = "";
+          this.currentUserEmail = "";
+          this.records = [];
+          this.savedCards = [];
+          this.login.password = "";
+          this.navigateRoute("login");
+        }
+      },
+      normalizeBackendRecord(record) {
+        const rawDate = record.date || record.watched_date || (record.created_at || "").slice(0, 10);
+        const displayDate = rawDate ? rawDate.replaceAll("-", ".") : "";
+        const title = record.title || record.anime_title || record.anime?.title_ko || record.anime?.title || "새 감상 기록";
+        const tags = Array.isArray(record.tags) ? record.tags : [
+          record.visibility,
+          record.status,
+        ].filter(Boolean);
+
+        return {
+          id: record.id,
+          date: displayDate,
+          title,
+          memo: record.memo || record.content || "",
+          rating: Number(record.rating || 0),
+          tags,
+          count: record.count || record.like_count || 0,
+          cover: record.cover || record.anime_poster || "linear-gradient(160deg, #b99be0, #ffd1e4)",
+          raw: record,
+        };
       },
       async loadRecords() {
         this.isLoading = true;
         try {
           const data = await this.apiFetch("/api/records/");
-          this.records = data.records;
+          const records = data.records || data.results || (Array.isArray(data) ? data : []);
+          this.records = records.map(this.normalizeBackendRecord);
           this.selectedIndex = 0;
           if (this.records.length) {
-            await this.analyzeFromRecord(this.records[0]);
+            try {
+              await this.analyzeFromRecord(this.records[0]);
+            } catch (error) {
+              this.ai = {
+                ...defaultAnalysis,
+                tags: [...this.records[0].tags, "명장면", "공유하기"],
+              };
+            }
           }
         } finally {
           this.isLoading = false;
         }
       },
+      savedCardsKey() {
+        const owner = this.currentUserEmail || "guest";
+        return `deokkkuSavedCards:${owner}`;
+      },
       loadSavedCards() {
         try {
-          const storedCards = JSON.parse(localStorage.getItem("deokkkuSavedCards") || "[]");
+          const storedCards = JSON.parse(localStorage.getItem(this.savedCardsKey()) || "[]");
           this.savedCards = Array.isArray(storedCards) ? storedCards : [];
         } catch (error) {
           this.savedCards = [];
@@ -867,13 +1024,16 @@ window.addEventListener("load", () => {
       },
       persistSavedCards() {
         try {
-          localStorage.setItem("deokkkuSavedCards", JSON.stringify(this.savedCards));
+          localStorage.setItem(this.savedCardsKey(), JSON.stringify(this.savedCards));
         } catch (error) {
           // 저장소를 사용할 수 없어도 현재 화면의 앨범 목록과 알림은 유지합니다.
         }
       },
       deleteSavedCard(cardId) {
         this.savedCards = this.savedCards.filter((card) => card.id !== cardId);
+        if (this.editingSavedCardId === cardId) {
+          this.editingSavedCardId = null;
+        }
         this.persistSavedCards();
       },
       navIcon(item) {
@@ -907,6 +1067,7 @@ window.addEventListener("load", () => {
         this.placedItems = [];
         this.mainImageSrc = "";
         this.selectedDecorationId = null;
+        this.editingSavedCardId = null;
         this.resetUndoHistory();
         this.syncLayerZIndex();
         await this.analyzeFromRecord(record);
@@ -927,6 +1088,7 @@ window.addEventListener("load", () => {
         this.placedItems = this.cloneForSave(card.snapshot?.placedItems || []);
         this.mainImageSrc = card.snapshot?.mainImageSrc || "";
         this.selectedDecorationId = null;
+        this.editingSavedCardId = card.id;
         this.selectedIndex = matchingIndex >= 0 ? matchingIndex : this.selectedIndex;
         this.applyPage("기록 작성", true);
         this.toastMessage = "";
@@ -971,6 +1133,7 @@ window.addEventListener("load", () => {
           this.placedItems = [];
           this.mainImageSrc = "";
           this.selectedDecorationId = null;
+          this.editingSavedCardId = null;
           this.resetUndoHistory();
           this.syncLayerZIndex();
         }
@@ -1022,10 +1185,11 @@ window.addEventListener("load", () => {
           id: nextId,
           icon: sticker.icon,
           tone: sticker.tone,
+          imageSrc: sticker.imageSrc || null,
           x: 24 + (this.placedItems.length * 11) % 52,
           y: 20 + (this.placedItems.length * 17) % 56,
           rotate: -14 + (this.placedItems.length * 9) % 28,
-          scale: sticker.icon.length > 1 ? 0.86 : 1.08,
+          scale: sticker.imageSrc ? 0.72 : sticker.icon.length > 1 ? 0.86 : 1.08,
           zIndex: this.nextLayerZIndex(),
         };
         this.placedItems.push(nextItem);
@@ -1111,8 +1275,9 @@ window.addEventListener("load", () => {
         const now = Date.now();
         if (now - this.lastSaveAt < 350) return;
         this.lastSaveAt = now;
+        const existingCardId = this.editingSavedCardId;
         const savedCard = {
-          id: now,
+          id: existingCardId || now,
           title: this.currentRecord.title || "제목 없는 기록",
           date: this.currentRecord.date,
           rating: this.currentRecord.rating,
@@ -1127,7 +1292,17 @@ window.addEventListener("load", () => {
             analysis: this.cloneForSave(this.ai),
           },
         };
-        this.savedCards.unshift(savedCard);
+        if (existingCardId) {
+          const existingIndex = this.savedCards.findIndex((card) => card.id === existingCardId);
+          if (existingIndex >= 0) {
+            this.savedCards.splice(existingIndex, 1, savedCard);
+          } else {
+            this.savedCards.unshift(savedCard);
+          }
+        } else {
+          this.savedCards.unshift(savedCard);
+          this.editingSavedCardId = savedCard.id;
+        }
         this.toastMessage = "저장되었습니다";
         this.persistSavedCards();
       },

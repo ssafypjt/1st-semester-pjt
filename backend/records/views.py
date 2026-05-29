@@ -11,7 +11,6 @@
 import os
 
 from django.conf import settings
-from django.db.models import Q
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from rest_framework import filters, status, viewsets
@@ -30,7 +29,7 @@ from .serializers import (RecordDetailSerializer, RecordImageSerializer,
 class RecordViewSet(viewsets.ModelViewSet):
     """기록 CRUD.
 
-    - list/retrieve: 본인 기록 + visibility=public 기록만.
+    - list/retrieve: 로그인한 본인 기록만.
     - create: 로그인된 유저 (자동으로 user=request.user).
     - update/partial_update/destroy: 본인 기록만.
     """
