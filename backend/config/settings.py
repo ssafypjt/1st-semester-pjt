@@ -45,7 +45,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'accounts',
-    'animes',
+    'works',
     'albums',
     'records',
     # DB 레코드 삭제 시 ImageField/FileField 물리 파일 동반 삭제

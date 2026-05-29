@@ -36,7 +36,7 @@ class RecordViewSet(viewsets.ModelViewSet):
     """
     permission_classes = [IsOwnerOrReadOnly]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['anime__title', 'anime__title_ko', 'content']
+    search_fields = ['work__title', 'work__title_ko', 'content']
     ordering_fields = ['created_at', 'rating', 'like_count']
 
     def get_queryset(self):
