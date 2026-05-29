@@ -43,8 +43,13 @@ class RecordViewSet(viewsets.ModelViewSet):
         user = self.request.user
         qs = Record.objects.select_related('user', 'anime')
         if user.is_authenticated:
-            return qs.filter(Q(user=user) | Q(visibility='public'))
-        return qs.filter(visibility='public')
+            # 본인 기록은 draft 포함 전체, 타인 기록은 공개+게시 완료만
+            return qs.filter(
+                Q(user=user) |
+                Q(visibility='public', status='published')
+            )
+        # 비로그인: 공개+게시 완료만
+        return qs.filter(visibility='public', status='published')
 
     def get_serializer_class(self):
         if self.action == 'list':
