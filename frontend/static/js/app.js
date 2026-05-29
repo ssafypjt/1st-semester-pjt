@@ -1347,6 +1347,21 @@ window.addEventListener("load", () => {
       buildShareCollageItems(cardType, memoText) {
         const collageItems = [];
         const hasMainImage = cardType === "image-polaroid";
+        const hasCanvasMemo = Boolean(String(memoText || "").trim());
+        const stickerSlots = hasMainImage
+          ? [
+              { x: 68, y: 18 },
+              { x: 12, y: 34 },
+              { x: 72, y: 58 },
+              { x: 18, y: 70 },
+            ]
+          : [
+              { x: 72, y: 18 },
+              { x: 12, y: 28 },
+              { x: 76, y: 48 },
+              { x: 16, y: 68 },
+              { x: 58, y: 74 },
+            ];
 
         if (hasMainImage) {
           collageItems.push({
@@ -1365,9 +1380,9 @@ window.addEventListener("load", () => {
           .filter((item) => item.type !== "text")
           .filter((item) => item.imageSrc || this.isShareDecorativeIcon(item.icon))
           .slice(0, hasMainImage ? 4 : 5);
-        const cleanMemo = this.truncateShareText(memoText || this.currentRecord.title || "나만의 감상 기록", hasMainImage ? 28 : 96);
+        const cleanMemo = this.truncateShareText(memoText, hasMainImage ? 28 : 96);
 
-        if (hasMainImage && cleanMemo) {
+        if (hasMainImage && hasCanvasMemo) {
           collageItems.push({
             id: "share-memo",
             kind: "memo",
@@ -1381,7 +1396,7 @@ window.addEventListener("load", () => {
           });
         }
 
-        if (!hasMainImage) {
+        if (!hasMainImage && hasCanvasMemo) {
           collageItems.push({
             id: "share-main-memo",
             kind: "memo",
@@ -1401,6 +1416,7 @@ window.addEventListener("load", () => {
           const icon = !isMemo && !hasImage ? item.icon : "";
           if (!hasImage && !icon) return;
 
+          const slot = stickerSlots[index % stickerSlots.length];
           collageItems.push({
             id: item.id || `item-${index}`,
             kind: hasImage ? "sticker-image" : "sticker",
@@ -1408,18 +1424,18 @@ window.addEventListener("load", () => {
             icon,
             x: hasMainImage
               ? this.clampShareValue(16 + (Number(item.x) || 0) * 0.62 + (index % 2) * 6, 8, 76)
-              : this.randomBetween(8, 78),
+              : this.clampShareValue(slot.x + this.randomBetween(-4, 4), 8, 78),
             y: hasMainImage
               ? this.clampShareValue(14 + (Number(item.y) || 0) * 0.5 + (index % 3) * 4, 8, 68)
-              : this.randomBetween(8, 72),
-            size: hasImage ? this.randomBetween(42, 56) : this.randomBetween(34, 48),
+              : this.clampShareValue(slot.y + this.randomBetween(-5, 5), 8, 74),
+            size: hasImage ? this.randomBetween(38, 50) : this.randomBetween(32, 44),
             rotate: this.randomBetween(-18, 18),
             zIndex: 9 + index,
           });
         });
 
         if (!hasMainImage) {
-          const shapeCount = 5 + Math.floor(Math.random() * 3);
+          const shapeCount = hasCanvasMemo ? 5 + Math.floor(Math.random() * 3) : 8 + Math.floor(Math.random() * 3);
           for (let index = 0; index < shapeCount; index += 1) {
             collageItems.push({
               id: `shape-${index}`,
@@ -1436,13 +1452,13 @@ window.addEventListener("load", () => {
 
         if (!collageItems.length) {
           collageItems.push({
-            id: "fallback-note",
-            kind: "memo",
-            text: this.truncateShareText(memoText || "나만의 감상 기록", 38),
-            x: 24,
-            y: 34,
-            size: 122,
-            rotate: -4,
+            id: "fallback-shape",
+            kind: "shape",
+            icon: "",
+            x: 42,
+            y: 36,
+            size: 70,
+            rotate: 0,
             zIndex: 4,
           });
         }
@@ -1461,7 +1477,8 @@ window.addEventListener("load", () => {
         const memoItems = this.placedItems
           .filter((item) => item.type === "text" && item.text)
           .map((item) => item.text);
-        const memoText = memoItems[0] || this.currentRecord.memo || "";
+        const canvasMemoText = memoItems[0] || "";
+        const recordMemoText = canvasMemoText || this.currentRecord.memo || "";
         const tags = this.currentRecord.tags?.length
           ? this.currentRecord.tags.map((tag) => `#${String(tag).replace(/^#/, "")}`).join(" ")
           : "#감상 #다이어리 #덕꾸";
@@ -1476,9 +1493,9 @@ window.addEventListener("load", () => {
           date: this.formatShareDate(this.currentRecord.date),
           rating: `${this.currentRecord.rating || 0} / 10`,
           tags: tagList,
-          memo: this.truncateShareText(memoText, 42),
+          memo: this.truncateShareText(recordMemoText, 42),
           tapes: this.buildShareTapes(cardType),
-          collageItems: this.buildShareCollageItems(cardType, memoText),
+          collageItems: this.buildShareCollageItems(cardType, canvasMemoText),
         };
       },
       randomizeShareCard() {
