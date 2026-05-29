@@ -162,3 +162,34 @@ class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True,
                                      style={'input_type': 'password'})
+
+
+class PasswordChangeSerializer(serializers.Serializer):
+    """비밀번호 변경 — 기존 비밀번호 검증 후 새 비밀번호로 교체."""
+    old_password = serializers.CharField(
+        write_only=True, style={'input_type': 'password'},
+    )
+    new_password = serializers.CharField(
+        write_only=True, min_length=8, style={'input_type': 'password'},
+    )
+
+    def validate_old_password(self, value):
+        user = self.context['request'].user
+        if not user.check_password(value):
+            raise serializers.ValidationError('기존 비밀번호가 일치하지 않습니다.')
+        return value
+
+    def validate_new_password(self, value):
+        user = self.context['request'].user
+        try:
+            validate_password(value, user=user)
+        except DjangoValidationError as e:
+            raise serializers.ValidationError(list(e.messages))
+        return value
+
+    def validate(self, attrs):
+        if attrs['old_password'] == attrs['new_password']:
+            raise serializers.ValidationError(
+                {'new_password': '새 비밀번호는 기존 비밀번호와 달라야 합니다.'}
+            )
+        return attrs

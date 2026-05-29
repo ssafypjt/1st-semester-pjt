@@ -12,7 +12,7 @@ CSRF 정책:
 - 회원가입(POST /api/auth/signup/) 시 multipart/form-data 로 선택적 업로드 가능.
 - 가입 후 수정은 PATCH /api/auth/me/update/ 로 처리.
 """
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.middleware.csrf import get_token
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
@@ -21,7 +21,8 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from .serializers import LoginSerializer, ProfileUpdateSerializer, SignupSerializer, UserSerializer
+from .serializers import (LoginSerializer, PasswordChangeSerializer,
+                          ProfileUpdateSerializer, SignupSerializer, UserSerializer)
 
 
 @api_view(['GET'])
@@ -89,6 +90,28 @@ def logout_view(request):
 @permission_classes([IsAuthenticated])
 def me(request):
     return Response(UserSerializer(request.user, context={'request': request}).data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def password_change(request):
+    """비밀번호 변경.
+
+    인증 필요 뷰 — CSRF 토큰 검증 적용.
+    POST /api/auth/password/change/
+    Body: { old_password, new_password }
+    비밀번호 변경 후 세션을 유지하기 위해 update_session_auth_hash 호출.
+    """
+    serializer = PasswordChangeSerializer(
+        data=request.data,
+        context={'request': request},
+    )
+    serializer.is_valid(raise_exception=True)
+    request.user.set_password(serializer.validated_data['new_password'])
+    request.user.save(update_fields=['password'])
+    # 비밀번호 변경 후 세션 갱신 — 자동 로그아웃 방지
+    update_session_auth_hash(request, request.user)
+    return Response({'detail': '비밀번호가 변경되었습니다.'})
 
 
 @api_view(['PATCH'])
