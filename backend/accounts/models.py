@@ -1,7 +1,7 @@
 """
 User 모델 (ERD).
 - 이메일 로그인
-- 소셜 로그인 확장 대비 (provider/provider_id NULL 허용)
+- 소셜 로그인은 SocialAccount 테이블로 분리 (1계정 N소셜 연동 지원)
 - 로컬 회원가입 시 프로필 이미지 직접 업로드 지원 (ImageField)
 """
 import os
@@ -38,13 +38,7 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractBaseUser, PermissionsMixin):
-    """ERD: User"""
-    PROVIDER_CHOICES = [
-        ('local', 'Local'),
-        ('google', 'Google'),
-        ('kakao', 'Kakao'),
-        ('apple', 'Apple'),
-    ]
+    """ERD: User — 이메일 기반 단일 계정. 소셜 로그인은 SocialAccount 참조."""
 
     email = models.EmailField('이메일', max_length=255, unique=True)
     nickname = models.CharField('닉네임', max_length=50)
@@ -54,8 +48,6 @@ class User(AbstractBaseUser, PermissionsMixin):
         blank=True,
         null=True,
     )
-    provider = models.CharField('소셜 제공자', max_length=20, choices=PROVIDER_CHOICES, default='local')
-    provider_id = models.CharField('소셜 ID', max_length=255, blank=True, null=True)
     created_at = models.DateTimeField('가입일', auto_now_add=True)
 
     is_active = models.BooleanField(default=True)
@@ -71,3 +63,32 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return f'{self.nickname} ({self.email})'
+
+
+class SocialAccount(models.Model):
+    """소셜 로그인 연동 정보. User 1개에 여러 소셜 계정 연결 가능."""
+
+    PROVIDER_CHOICES = [
+        ('google', 'Google'),
+        ('kakao', 'Kakao'),
+        ('apple', 'Apple'),
+    ]
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='social_accounts',
+        verbose_name='사용자',
+    )
+    provider = models.CharField('소셜 제공자', max_length=20, choices=PROVIDER_CHOICES)
+    provider_id = models.CharField('소셜 고유 ID', max_length=255)
+    access_token = models.TextField('액세스 토큰', blank=True, null=True)
+    refresh_token = models.TextField('리프레시 토큰', blank=True, null=True)
+    created_at = models.DateTimeField('연동일', auto_now_add=True)
+
+    class Meta:
+        db_table = 'social_account'
+        unique_together = [('provider', 'provider_id')]  # 동일 소셜 계정 중복 연결 방지
+
+    def __str__(self):
+        return f'{self.user.nickname} — {self.provider}'

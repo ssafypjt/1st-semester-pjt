@@ -12,7 +12,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
-from .models import User
+from .models import SocialAccount, User
 
 # 프로필 이미지 허용 확장자 (RecordImage와 동일 기준)
 PROFILE_ALLOWED_EXT = {'.png', '.jpg', '.jpeg', '.webp', '.gif'}
@@ -38,12 +38,14 @@ class UserSerializer(serializers.ModelSerializer):
     """현재 로그인한 사용자 정보 응답용."""
     # 필드명은 profile_image 유지 (프론트 호환) — 값은 절대 URL로 반환
     profile_image = serializers.SerializerMethodField()
+    # 연결된 소셜 제공자 목록 (예: ["google", "kakao"])
+    social_providers = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = ['id', 'email', 'nickname', 'profile_image',
-                  'provider', 'created_at']
-        read_only_fields = ['id', 'provider', 'created_at']
+                  'social_providers', 'created_at']
+        read_only_fields = ['id', 'created_at']
 
     def get_profile_image(self, obj):
         """업로드된 이미지는 절대 URL, 없으면 None."""
@@ -53,6 +55,10 @@ class UserSerializer(serializers.ModelSerializer):
         if request:
             return request.build_absolute_uri(obj.profile_image.url)
         return obj.profile_image.url
+
+    def get_social_providers(self, obj):
+        """연결된 소셜 제공자 이름 목록. 로컬 전용 계정은 빈 리스트."""
+        return list(obj.social_accounts.values_list('provider', flat=True))
 
 
 class SignupSerializer(serializers.ModelSerializer):
