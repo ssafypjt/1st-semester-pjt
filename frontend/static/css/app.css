@@ -147,7 +147,7 @@
 }
 
 .share-card-logo-wrapper::before {
-  content: "✦";
+  content: "*";
   position: absolute;
   left: -18px;
   top: 4px;
