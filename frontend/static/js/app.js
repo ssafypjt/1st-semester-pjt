@@ -376,6 +376,7 @@ window.addEventListener("load", () => {
       "add-memo",
       "undo",
       "save-card",
+      "open-share-modal",
       "select-decoration",
       "clear-decoration",
       "remove-decoration",
@@ -410,6 +411,12 @@ window.addEventListener("load", () => {
                 @keydown.space.prevent="$emit('save-card')"
                 title="현재 다이어리 카드 저장"
               ><span class="save-icon">▣</span><b>저장</b></button>
+              <button
+                class="share-button editor-share-button"
+                type="button"
+                @click="$emit('open-share-modal')"
+                title="공유 카드 만들기"
+              ><span>↗</span><b>공유하기</b></button>
             </div>
           </div>
 
@@ -465,7 +472,19 @@ window.addEventListener("load", () => {
         activePage: "홈",
         activeTab: "전체",
         activeStickerCategory: "전체",
-        shareMode: "story",
+        isShareModalOpen: false,
+        shareCard: {
+          template: "memo-collage",
+          theme: "#f6dde9",
+          accent: "#7f5bb8",
+          title: "",
+          date: "",
+          rating: "",
+          tags: [],
+          memo: "",
+          tapes: [],
+          collageItems: [],
+        },
         isLoading: false,
         isAuthSubmitting: false,
         isLoggingOut: false,
@@ -555,12 +574,6 @@ window.addEventListener("load", () => {
         ],
         placedItems: [],
         colors: ["#cdb6ec", "#8d63d0", "#bdd5ed", "#bde5e1", "#dfdfc8", "#ffd9b4", "#dedbe3"],
-        shareModes: [
-          { id: "story", label: "스토리 9:16" },
-          { id: "feed", label: "피드 1:1" },
-          { id: "link", label: "링크 카드" },
-          { id: "image", label: "이미지 저장" },
-        ],
         ai: defaultAnalysis,
         draft: {
           title: "장송의 프리렌",
@@ -640,6 +653,13 @@ window.addEventListener("load", () => {
       },
       canUndo() {
         return this.undoHistory.length > 0;
+      },
+      shareTemplateLabel() {
+        const labels = {
+          "image-polaroid": "이미지 폴라로이드",
+          "memo-collage": "메모 콜라주",
+        };
+        return labels[this.shareCard.template] || "공유 카드";
       },
       tabDescription() {
         return this.selectedView.description || "선택한 기록 모음을 다이어리 카드로 미리 봅니다.";
@@ -1270,6 +1290,240 @@ window.addEventListener("load", () => {
       clearStickers() {
         this.placedItems = [];
         this.selectedDecorationId = null;
+      },
+      pickRandom(items) {
+        return items[Math.floor(Math.random() * items.length)];
+      },
+      clampShareValue(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+      },
+      formatShareDate(date) {
+        if (!date) return new Date().toISOString().slice(0, 10).replaceAll("-", ".");
+        return String(date).replaceAll("-", ".").replace(/\.$/, "");
+      },
+      truncateShareText(text, maxLength = 46) {
+        const cleanText = String(text || "").replace(/\s+/g, " ").trim();
+        if (cleanText.length <= maxLength) return cleanText;
+        return `${cleanText.slice(0, maxLength - 1)}…`;
+      },
+      shareCollageStyle(item) {
+        return {
+          left: `${item.x}%`,
+          top: `${item.y}%`,
+          width: item.width ? `${item.width}px` : `${item.size}px`,
+          height: item.kind === "memo" ? "auto" : `${item.size}px`,
+          transform: `rotate(${item.rotate}deg)`,
+          zIndex: item.zIndex,
+        };
+      },
+      shareTapeStyle(tape) {
+        return {
+          left: `${tape.x}%`,
+          top: `${tape.y}%`,
+          width: `${tape.width}px`,
+          transform: `rotate(${tape.rotate}deg)`,
+        };
+      },
+      buildShareTapes(cardType) {
+        const count = cardType === "image-polaroid" ? 2 : 3;
+        return Array.from({ length: count }, (_, index) => ({
+          id: `tape-${index}`,
+          x: this.randomBetween(8, 72),
+          y: this.randomBetween(6, 72),
+          width: this.randomBetween(54, 86),
+          rotate: this.randomBetween(-18, 18),
+        }));
+      },
+      randomBetween(min, max) {
+        return min + Math.random() * (max - min);
+      },
+      isShareDecorativeIcon(icon) {
+        const value = String(icon || "").trim();
+        if (!value) return false;
+        if ([...value].length > 2) return false;
+        return !/[A-Za-z0-9ㄱ-ㅎ가-힣]/.test(value);
+      },
+      buildShareCollageItems(cardType, memoText) {
+        const collageItems = [];
+        const hasMainImage = cardType === "image-polaroid";
+
+        if (hasMainImage) {
+          collageItems.push({
+            id: "main-image",
+            kind: "image",
+            imageSrc: this.mainImageSrc,
+            x: 15,
+            y: 12,
+            size: 146,
+            rotate: this.randomBetween(-7, -2),
+            zIndex: 3,
+          });
+        }
+
+        const stickerItems = this.placedItems
+          .filter((item) => item.type !== "text")
+          .filter((item) => item.imageSrc || this.isShareDecorativeIcon(item.icon))
+          .slice(0, hasMainImage ? 4 : 5);
+        const cleanMemo = this.truncateShareText(memoText || this.currentRecord.title || "나만의 감상 기록", hasMainImage ? 28 : 96);
+
+        if (hasMainImage && cleanMemo) {
+          collageItems.push({
+            id: "share-memo",
+            kind: "memo",
+            text: cleanMemo,
+            x: 52,
+            y: 58,
+            width: 94,
+            size: 94,
+            rotate: this.randomBetween(-9, 9),
+            zIndex: 8,
+          });
+        }
+
+        if (!hasMainImage) {
+          collageItems.push({
+            id: "share-main-memo",
+            kind: "memo",
+            text: cleanMemo,
+            x: this.randomBetween(10, 14),
+            y: this.randomBetween(32, 38),
+            width: this.randomBetween(224, 242),
+            size: 188,
+            rotate: this.randomBetween(-3, 3),
+            zIndex: 6,
+          });
+        }
+
+        stickerItems.forEach((item, index) => {
+          const isMemo = item.type === "text";
+          const hasImage = Boolean(item.imageSrc);
+          const icon = !isMemo && !hasImage ? item.icon : "";
+          if (!hasImage && !icon) return;
+
+          collageItems.push({
+            id: item.id || `item-${index}`,
+            kind: hasImage ? "sticker-image" : "sticker",
+            imageSrc: hasImage ? item.imageSrc : "",
+            icon,
+            x: hasMainImage
+              ? this.clampShareValue(16 + (Number(item.x) || 0) * 0.62 + (index % 2) * 6, 8, 76)
+              : this.randomBetween(8, 78),
+            y: hasMainImage
+              ? this.clampShareValue(14 + (Number(item.y) || 0) * 0.5 + (index % 3) * 4, 8, 68)
+              : this.randomBetween(8, 72),
+            size: hasImage ? this.randomBetween(42, 56) : this.randomBetween(34, 48),
+            rotate: this.randomBetween(-18, 18),
+            zIndex: 9 + index,
+          });
+        });
+
+        if (!hasMainImage) {
+          const fallbackStickers = ["✦", "♡", "♪", "★"];
+          const neededStickers = Math.max(0, 5 - stickerItems.length);
+          for (let index = 0; index < neededStickers; index += 1) {
+            collageItems.push({
+              id: `fallback-sticker-${index}`,
+              kind: "sticker",
+              icon: this.pickRandom(fallbackStickers),
+              x: this.randomBetween(10, 78),
+              y: this.randomBetween(12, 70),
+              size: this.randomBetween(32, 46),
+              rotate: this.randomBetween(-18, 18),
+              zIndex: 10 + index,
+            });
+          }
+
+          const shapeCount = 3 + Math.floor(Math.random() * 3);
+          for (let index = 0; index < shapeCount; index += 1) {
+            collageItems.push({
+              id: `shape-${index}`,
+              kind: "shape",
+              icon: "",
+              x: this.randomBetween(8, 78),
+              y: this.randomBetween(10, 70),
+              size: this.randomBetween(22, 42),
+              rotate: this.randomBetween(-20, 20),
+              zIndex: 2 + index,
+            });
+          }
+        }
+
+        if (!collageItems.length) {
+          collageItems.push({
+            id: "fallback-note",
+            kind: "memo",
+            text: this.truncateShareText(memoText || "나만의 감상 기록", 38),
+            x: 24,
+            y: 34,
+            size: 122,
+            rotate: -4,
+            zIndex: 4,
+          });
+        }
+
+        return collageItems.slice(0, hasMainImage ? 9 : 11);
+      },
+      buildShareCardFromDiary() {
+        const themes = [
+          { theme: "#f6dde9", accent: "#7f5bb8" },
+          { theme: "#dff3ee", accent: "#24796f" },
+          { theme: "#ffe7c7", accent: "#b45b2b" },
+          { theme: "#e6efff", accent: "#466eb5" },
+          { theme: "#f1eadb", accent: "#6f5a45" },
+        ];
+        const nextTheme = this.pickRandom(themes);
+        const memoItems = this.placedItems
+          .filter((item) => item.type === "text" && item.text)
+          .map((item) => item.text);
+        const memoText = memoItems[0] || this.currentRecord.memo || "";
+        const tags = this.currentRecord.tags?.length
+          ? this.currentRecord.tags.map((tag) => `#${String(tag).replace(/^#/, "")}`).join(" ")
+          : "#감상 #다이어리 #덕꾸";
+        const tagList = tags.split(/\s+/).filter(Boolean).slice(0, 4);
+        const cardType = this.mainImageSrc ? "image-polaroid" : "memo-collage";
+
+        this.shareCard = {
+          template: cardType,
+          theme: nextTheme.theme,
+          accent: nextTheme.accent,
+          title: this.currentRecord.title || "제목 없는 기록",
+          date: this.formatShareDate(this.currentRecord.date),
+          rating: `${this.currentRecord.rating || 0} / 10`,
+          tags: tagList,
+          memo: this.truncateShareText(memoText, 42),
+          tapes: this.buildShareTapes(cardType),
+          collageItems: this.buildShareCollageItems(cardType, memoText),
+        };
+      },
+      randomizeShareCard() {
+        this.buildShareCardFromDiary();
+      },
+      openShareModal() {
+        this.buildShareCardFromDiary();
+        this.isShareModalOpen = true;
+      },
+      closeShareModal() {
+        this.isShareModalOpen = false;
+      },
+      async downloadShareCard() {
+        const target = this.$refs.shareCard;
+        if (!target || !window.html2canvas) {
+          console.log("share card image save requested", this.shareCard);
+          return;
+        }
+        try {
+          const canvas = await window.html2canvas(target, {
+            backgroundColor: null,
+            scale: 2,
+            useCORS: true,
+          });
+          const link = document.createElement("a");
+          link.download = "deokkku-share-card.png";
+          link.href = canvas.toDataURL("image/png");
+          link.click();
+        } catch (error) {
+          console.log("share card image save failed", error);
+        }
       },
       saveCard() {
         const now = Date.now();

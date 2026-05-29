@@ -6,9 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>덕꾸 Deokkku</title>
     {{ initial_route|json_script:"initial-route" }}
-    <link rel="stylesheet" href="{% static 'css/app.css' %}?v=signup-auth-3" />
+    <link rel="stylesheet" href="{% static 'css/app.css' %}?v=share-modal-1" />
     <script defer src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-    <script defer src="{% static 'js/app.js' %}?v=signup-auth-3"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script defer src="{% static 'js/app.js' %}?v=share-modal-1"></script>
   </head>
   <body>
     <div id="app" v-cloak>
@@ -135,6 +136,7 @@
             @add-memo="addTextMemo"
             @undo="undoLastCanvasChange"
             @save-card="saveCard"
+            @open-share-modal="openShareModal"
             @select-decoration="selectDecoration"
             @clear-decoration="clearDecorationSelection"
             @remove-decoration="removeSticker"
@@ -202,52 +204,6 @@
             </div>
           </section>
 
-          <section v-if="activePage === '기록 작성' || activePage === '공유 페이지'" class="share-showcase">
-            <div class="panel-head">
-              <div>
-                <h3>모바일 공유 스타일</h3>
-                <p>웹에서 만든 다이어리 기록을 스토리, 피드, 링크 카드, 이미지 저장용으로 미리 볼 수 있어요.</p>
-              </div>
-              <div class="share-tabs">
-                <button v-for="mode in shareModes" :key="mode.id" :class="{ active: shareMode === mode.id }" type="button" @click="shareMode = mode.id">
-                  [[ mode.label ]]
-                </button>
-              </div>
-            </div>
-            <div class="share-preview-board">
-              <article class="phone-preview" :class="shareMode">
-                <div class="phone-top"><span></span><b>ANILOG</b><span></span></div>
-                <div class="mobile-card">
-                  <small>[[ selectedView.date ]]</small>
-                  <h4>[[ selectedView.title ]]</h4>
-                  <div class="mobile-art">
-                    <img v-if="mainImageSrc" :src="mainImageSrc" alt="" />
-                    <span v-else class="empty-image-slot">
-                      <strong>＋</strong>
-                      <em>이미지</em>
-                    </span>
-                    <i v-for="item in placedItems.slice(0, 6)" :key="item.id">
-                      <span v-if="item.type === 'text'">T</span>
-                      <img v-else-if="item.imageSrc" :src="item.imageSrc" alt="" />
-                      <span v-else>[[ item.icon ]]</span>
-                    </i>
-                  </div>
-                  <p>[[ selectedView.memo ]]</p>
-                  <strong>[[ selectedView.rating ]] / 10 [[ stars(selectedView.rating) ]]</strong>
-                </div>
-                <div class="phone-actions">
-                  <button type="button">이미지 저장</button>
-                  <button type="button">링크 복사</button>
-                  <button type="button">스토리 저장</button>
-                </div>
-              </article>
-              <article class="share-note">
-                <b>공유 활용 팁</b>
-                <p>스토리형은 세로 이미지, 피드형은 정사각 카드, 링크형은 카카오톡 미리보기처럼 구성됩니다.</p>
-                <div class="share-icons"><span>↓</span><span>K</span><span>↗</span><span>⋯</span></div>
-              </article>
-            </div>
-          </section>
 
           <div v-if="isRecordModalOpen" class="modal-backdrop" @click.self="closeRecordModal">
             <section class="record-modal" role="dialog" aria-modal="true" :aria-label="recordModalMode === 'edit' ? '기록 정보 수정' : '새 기록 만들기'">
@@ -283,6 +239,73 @@
               <div>
                 <button type="button" @click="toastMessage = ''">확인</button>
                 <button class="primary" type="button" @click="navigatePage('내 앨범'); toastMessage = ''">내 앨범 보기</button>
+              </div>
+            </section>
+          </div>
+
+          <div v-if="isShareModalOpen" class="share-modal" @click.self="closeShareModal">
+            <section class="share-modal-panel" role="dialog" aria-modal="true" aria-label="공유 카드 만들기">
+              <header class="share-modal-head">
+                <div>
+                  <span>SHARE PREVIEW</span>
+                  <h3>공유 카드 만들기</h3>
+                </div>
+                <button class="share-close-button" type="button" @click="closeShareModal" aria-label="닫기">×</button>
+              </header>
+              <div class="share-modal-body">
+                <article
+                  ref="shareCard"
+                  class="share-card"
+                  :class="['share-card-' + shareCard.template]"
+                  :style="{ '--share-theme': shareCard.theme, '--share-accent': shareCard.accent }"
+                >
+                  <div class="share-card-top">
+                    <span class="share-card-date">[[ shareCard.date ]]</span>
+                    <span class="share-card-logo-wrapper" aria-label="덕꾸">
+                      <img class="share-card-logo" src="{% static 'images/simple_logo.png' %}?v=2" alt="" />
+                      <b>덕꾸</b>
+                    </span>
+                  </div>
+                  <div class="share-card-visual">
+                    <span
+                      v-for="tape in shareCard.tapes"
+                      :key="tape.id"
+                      class="share-card-tape"
+                      :style="shareTapeStyle(tape)"
+                    ></span>
+                    <span class="share-card-mark"></span>
+                    <template v-if="shareCard.collageItems.length">
+                      <span
+                        v-for="item in shareCard.collageItems"
+                        :key="item.id"
+                        class="share-card-collage-item"
+                        :class="['share-card-collage-' + item.kind]"
+                        :style="shareCollageStyle(item)"
+                      >
+                        <img v-if="item.imageSrc" :src="item.imageSrc" alt="" />
+                        <span v-else>[[ item.text || item.icon ]]</span>
+                      </span>
+                    </template>
+                    <span v-else class="share-card-empty">오늘의 기록</span>
+                  </div>
+                  <div class="share-card-content">
+                    <h4>[[ shareCard.title ]]</h4>
+                    <strong>[[ shareCard.rating ]]</strong>
+                    <p v-if="shareCard.memo && shareCard.template === 'image-polaroid'">[[ shareCard.memo ]]</p>
+                    <div class="share-card-tags">
+                      <span v-for="tag in shareCard.tags" :key="tag">[[ tag ]]</span>
+                    </div>
+                  </div>
+                </article>
+                <aside class="share-modal-info">
+                  <b>[[ shareTemplateLabel ]]</b>
+                  <p>임시 더미 데이터로 만든 모바일 공유 카드입니다.</p>
+                  <div class="share-modal-actions">
+                    <button class="share-button" type="button" @click="randomizeShareCard">다시 만들기</button>
+                    <button class="share-button primary" type="button" @click="downloadShareCard">이미지 저장</button>
+                    <button class="share-button" type="button" @click="closeShareModal">닫기</button>
+                  </div>
+                </aside>
               </div>
             </section>
           </div>

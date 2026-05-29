@@ -13,6 +13,478 @@
   font-family: "Pretendard", "Segoe UI", "Apple SD Gothic Neo", sans-serif;
 }
 
+.editor-share-button {
+  border-color: #cfdfe4;
+  background: #f7fcfb;
+  color: #356b72;
+}
+
+.share-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(36, 29, 45, .48);
+  backdrop-filter: blur(6px);
+}
+
+.share-modal-panel {
+  width: min(860px, 100%);
+  max-height: min(720px, calc(100vh - 32px));
+  overflow: auto;
+  border: 1px solid rgba(223, 214, 234, .95);
+  border-radius: 18px;
+  background: #fffdf9;
+  box-shadow: 0 28px 80px rgba(45, 33, 61, .28);
+}
+
+.share-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 24px 16px;
+  border-bottom: 1px solid #eee6f0;
+}
+
+.share-modal-head span {
+  color: #7b6a8b;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.share-modal-head h3 {
+  margin: 4px 0 0;
+  color: #382b45;
+  font-size: 22px;
+}
+
+.share-close-button {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid #e5dce9;
+  border-radius: 50%;
+  background: #fff;
+  color: #5c4b6c;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.share-modal-body {
+  display: grid;
+  grid-template-columns: minmax(280px, 370px) minmax(220px, 1fr);
+  gap: 16px;
+  align-items: center;
+  padding: 20px 22px 22px;
+}
+
+.share-modal .share-card {
+  position: relative;
+  display: block;
+  width: min(340px, 100%);
+  aspect-ratio: 9 / 16;
+  justify-self: center;
+  overflow: hidden;
+  padding: 28px;
+  border: 0;
+  border-radius: 28px;
+  color: #332b3b;
+  background: var(--share-theme);
+  box-shadow: 0 18px 42px rgba(69, 51, 87, .2);
+}
+
+.share-modal .share-card-memo-collage {
+  background:
+    linear-gradient(rgba(255,255,255,.26) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.26) 1px, transparent 1px),
+    linear-gradient(135deg, var(--share-theme), #fffdf7);
+  background-size: 22px 22px, 22px 22px, auto;
+}
+
+.share-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.share-card-date {
+  display: inline-flex;
+  flex: 0 0 auto;
+  max-width: 132px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.74);
+  color: var(--share-accent);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.share-card-logo-wrapper {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 86px;
+  color: var(--share-accent);
+  font-size: 13px;
+  font-weight: 950;
+  opacity: .82;
+  line-height: 1;
+  text-align: center;
+  position: relative;
+}
+
+.share-card-logo-wrapper b {
+  font: inherit;
+  width: 86px;
+}
+
+.share-card-logo-wrapper::before {
+  content: "✦";
+  position: absolute;
+  left: -18px;
+  top: 4px;
+  color: var(--share-accent);
+  font-size: 18px;
+  opacity: .72;
+}
+
+.share-card-logo {
+  width: 80px;
+  height: auto;
+  display: block;
+  object-fit: contain;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  mix-blend-mode: multiply;
+  opacity: .9;
+  transform: scale(1.45);
+  transform-origin: center;
+}
+
+.share-card-visual {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 260px;
+  margin: 24px 0;
+  isolation: isolate;
+}
+
+.share-card-mark {
+  display: grid;
+  place-items: center;
+  width: 210px;
+  height: 210px;
+  border: 10px solid rgba(255,255,255,.86);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.78), rgba(255,255,255,.38)),
+    radial-gradient(circle at 28% 26%, rgba(255,255,255,.98) 0 9px, transparent 10px),
+    radial-gradient(circle at 72% 64%, var(--share-accent) 0 16px, transparent 17px);
+  box-shadow: 0 18px 28px rgba(58, 44, 72, .16);
+  transform: rotate(-3deg);
+  z-index: 1;
+}
+
+.share-card-memo-collage .share-card-visual {
+  min-height: 330px;
+  margin: 18px 0 16px;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 18% 24%, rgba(255,255,255,.36) 0 20px, transparent 21px),
+    radial-gradient(circle at 78% 44%, rgba(255,255,255,.34) 0 14px, transparent 15px),
+    linear-gradient(rgba(255,255,255,.18) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.18) 1px, transparent 1px);
+  background-size: auto, auto, 18px 18px, 18px 18px;
+}
+
+.share-card-memo-collage .share-card-mark {
+  display: none;
+}
+
+.share-card-mark::before,
+.share-card-mark::after {
+  content: "";
+  position: absolute;
+  border-radius: 999px;
+  background: var(--share-accent);
+  opacity: .24;
+}
+
+.share-card-mark::before {
+  width: 126px;
+  height: 126px;
+  border-radius: 22px;
+  transform: rotate(9deg);
+}
+
+.share-card-mark::after {
+  width: 62px;
+  height: 62px;
+  background: #fff;
+  opacity: .72;
+}
+
+.share-card-tape {
+  position: absolute;
+  height: 24px;
+  border-radius: 3px;
+  background: rgba(255,255,255,.68);
+  box-shadow: 0 4px 10px rgba(58, 44, 72, .08);
+  z-index: 8;
+}
+
+.share-card-collage-item {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: rgba(255,255,255,.7);
+  filter: drop-shadow(0 10px 12px rgba(58, 44, 72, .18));
+  overflow: hidden;
+}
+
+.share-card-collage-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.share-card-collage-sticker {
+  background: transparent;
+  font-size: 34px;
+  line-height: 1;
+  filter: drop-shadow(0 5px 8px rgba(58, 44, 72, .14));
+}
+
+.share-card-collage-sticker-image {
+  background: transparent;
+  border-radius: 8px;
+  filter: drop-shadow(0 5px 8px rgba(58, 44, 72, .14));
+}
+
+.share-card-collage-sticker-image img {
+  object-fit: contain;
+}
+
+.share-card-collage-sticker span {
+  display: grid;
+  place-items: center;
+}
+
+.share-card-collage-image {
+  border: 6px solid #fff;
+  box-shadow: 0 12px 18px rgba(58, 44, 72, .14);
+}
+
+.share-card-collage-memo {
+  min-height: 136px;
+  padding: 22px 18px 18px;
+  border: 1px solid rgba(255,255,255,.72);
+  border-radius: 12px;
+  background:
+    linear-gradient(rgba(122, 85, 182, .08) 1px, transparent 1px),
+    rgba(255,255,255,.88);
+  background-size: 100% 24px;
+  color: #4f435e;
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1.5;
+  text-align: left;
+  box-shadow: 0 14px 22px rgba(58, 44, 72, .12);
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  overflow: visible;
+}
+
+.share-card-memo-collage .share-card-collage-memo::before {
+  content: "";
+  position: absolute;
+  top: -15px;
+  left: 30%;
+  width: 92px;
+  height: 28px;
+  border-radius: 4px;
+  background: rgba(255,255,255,.7);
+  transform: rotate(-8deg);
+}
+
+.share-card-memo-collage .share-card-collage-sticker,
+.share-card-memo-collage .share-card-collage-sticker-image {
+  filter: drop-shadow(0 7px 10px rgba(58, 44, 72, .16));
+}
+
+.share-card-collage-shape {
+  border-radius: 999px;
+  background: rgba(255,255,255,.44);
+  color: var(--share-accent);
+  font-size: 0;
+  font-weight: 950;
+  opacity: .82;
+}
+
+.share-card-empty {
+  position: relative;
+  z-index: 3;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.78);
+  color: var(--share-accent);
+  font-weight: 900;
+}
+
+.share-card-content {
+  position: absolute;
+  right: 26px;
+  bottom: 28px;
+  left: 26px;
+  padding-top: 20px;
+  border-top: 2px dashed rgba(255,255,255,.58);
+}
+
+.share-card-content h4 {
+  margin: 0 0 12px;
+  font-size: 28px;
+  line-height: 1.15;
+}
+
+.share-card-content strong {
+  display: inline-flex;
+  margin-bottom: 12px;
+  color: var(--share-accent);
+  font-size: 20px;
+}
+
+.share-card-content p {
+  margin: 0 0 8px;
+  color: #51475b;
+  font-weight: 850;
+  line-height: 1.45;
+}
+
+.share-card-content p:last-child {
+  margin-bottom: 0;
+}
+
+.share-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.share-card-tags span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.42);
+  color: #392f45;
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.share-card-image-polaroid .share-card-visual {
+  min-height: 300px;
+  border: 12px solid #fff;
+  border-bottom-width: 48px;
+  border-radius: 10px;
+  background: rgba(255,255,255,.42);
+  transform: rotate(-3deg);
+}
+
+.share-card-diary {
+  background:
+    linear-gradient(rgba(255,255,255,.34) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.34) 1px, transparent 1px),
+    var(--share-theme);
+  background-size: 24px 24px;
+}
+
+.share-card-diary .share-card-mark {
+  border-radius: 18px;
+  border: 10px solid rgba(255,255,255,.84);
+  outline: 2px dashed rgba(255,255,255,.88);
+  outline-offset: -18px;
+}
+
+.share-card-simple {
+  border-radius: 8px;
+  background: #fff;
+  border-top: 16px solid var(--share-theme);
+}
+
+.share-card-simple .share-card-mark {
+  width: 160px;
+  height: 160px;
+  background: var(--share-theme);
+}
+
+.share-modal-info {
+  padding: 20px;
+}
+
+.share-modal-info b {
+  display: block;
+  color: #372c44;
+  font-size: 22px;
+}
+
+.share-modal-info p {
+  margin: 10px 0 22px;
+  color: #6d6078;
+  line-height: 1.6;
+}
+
+.share-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.share-button {
+  min-height: 42px;
+  border: 1px solid #ded4e7;
+  border-radius: 10px;
+  padding: 0 15px;
+  background: #fff;
+  color: #4f435e;
+  font-weight: 900;
+}
+
+.share-button.primary {
+  border-color: #8c6ac4;
+  background: #7a55b6;
+  color: #fff;
+}
+
+@media (max-width: 760px) {
+  .share-modal-body {
+    grid-template-columns: 1fr;
+    padding: 18px;
+  }
+
+  .share-modal .share-card {
+    max-width: 300px;
+  }
+
+  .share-modal-actions {
+    flex-direction: column;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
