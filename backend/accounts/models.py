@@ -2,9 +2,20 @@
 User 모델 (ERD).
 - 이메일 로그인
 - 소셜 로그인 확장 대비 (provider/provider_id NULL 허용)
+- 로컬 회원가입 시 프로필 이미지 직접 업로드 지원 (ImageField)
 """
+import os
+import uuid
+
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
+
+
+def profile_image_upload_to(instance, filename):
+    """프로필 이미지를 uploads/profiles/<user_id>/<uuid>.<ext> 경로에 저장."""
+    ext = os.path.splitext(filename)[1].lower()
+    user_id = instance.pk or 'tmp'
+    return f'uploads/profiles/{user_id}/{uuid.uuid4().hex}{ext}'
 
 
 class UserManager(BaseUserManager):
@@ -37,7 +48,12 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     email = models.EmailField('이메일', max_length=255, unique=True)
     nickname = models.CharField('닉네임', max_length=50)
-    profile_image = models.URLField('프로필 이미지', max_length=500, blank=True)
+    profile_image = models.ImageField(
+        '프로필 이미지',
+        upload_to=profile_image_upload_to,
+        blank=True,
+        null=True,
+    )
     provider = models.CharField('소셜 제공자', max_length=20, choices=PROVIDER_CHOICES, default='local')
     provider_id = models.CharField('소셜 ID', max_length=255, blank=True, null=True)
     created_at = models.DateTimeField('가입일', auto_now_add=True)
