@@ -2,6 +2,8 @@
 from django.conf import settings
 from django.db import models
 
+from works.validators import validate_poster_url as validate_cover_url
+
 
 class Album(models.Model):
     VISIBILITY_CHOICES = [
@@ -18,7 +20,8 @@ class Album(models.Model):
     )
     name = models.CharField('앨범명', max_length=100)
     description = models.TextField('앨범 설명', blank=True)
-    cover_image = models.URLField('커버 이미지 URL', max_length=500, blank=True)
+    cover_image = models.URLField('커버 이미지 URL', max_length=500, blank=True,
+                                  validators=[validate_cover_url])
     visibility = models.CharField('공개 범위', max_length=20,
                                   choices=VISIBILITY_CHOICES, default='private')
     created_at = models.DateTimeField('생성일', auto_now_add=True)
@@ -36,10 +39,6 @@ class Album(models.Model):
 
     def __str__(self):
         return f'{self.name} ({self.user.nickname})'
-
-    @property
-    def record_count(self):
-        return self.records.count()
 
 
 class AlbumRecord(models.Model):
