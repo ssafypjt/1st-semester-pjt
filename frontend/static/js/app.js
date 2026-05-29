@@ -1204,6 +1204,7 @@ window.addEventListener("load", () => {
         const nextId = Date.now();
         const nextItem = {
           id: nextId,
+          type: "sticker",
           icon: sticker.icon,
           tone: sticker.tone,
           imageSrc: sticker.imageSrc || null,
@@ -1225,6 +1226,7 @@ window.addEventListener("load", () => {
           const nextId = Date.now();
           const nextItem = {
             id: nextId,
+            type: "photo",
             icon: "",
             imageSrc: reader.result,
             tone: "custom-image",
@@ -1346,7 +1348,13 @@ window.addEventListener("load", () => {
         if ([...value].length > 2) return false;
         return !/[A-Za-z0-9ㄱ-ㅎ가-힣]/.test(value);
       },
-      buildShareCollageItems(cardType, memoText) {
+      normalizePlacedItemType(item) {
+        if (item.type) return item.type;
+        if (item.imageSrc && item.tone === "custom-image") return "photo";
+        if (item.imageSrc || item.icon) return "sticker";
+        return "";
+      },
+      buildShareCollageItems(cardType, memoText, mainImages = [], stickers = []) {
         const collageItems = [];
         const hasMainImage = cardType === "image-polaroid";
         const hasCanvasMemo = Boolean(String(memoText || "").trim());
@@ -1366,24 +1374,51 @@ window.addEventListener("load", () => {
             ];
         const availableStickerSlots = [...stickerSlots].sort(() => Math.random() - 0.5);
 
-        if (hasMainImage) {
+        if (hasMainImage && mainImages[0]) {
           collageItems.push({
             id: "main-image",
             kind: "image",
-            imageSrc: this.mainImageSrc,
-            x: 15,
-            y: 12,
-            size: 146,
+            imageSrc: mainImages[0].imageSrc,
+            x: 13,
+            y: 9,
+            width: 220,
+            size: 246,
             rotate: this.randomBetween(-7, -2),
             zIndex: 3,
           });
         }
 
-        const stickerItems = this.placedItems
-          .filter((item) => item.type !== "text")
+        const stickerItems = stickers
           .filter((item) => item.imageSrc || this.isShareDecorativeIcon(item.icon))
-          .slice(0, hasMainImage ? 4 : 5);
+          .slice(0, hasMainImage ? 5 : 5);
         const cleanMemo = this.truncateShareText(memoText, hasMainImage ? 28 : 96);
+
+        if (hasMainImage) {
+          mainImages.slice(1, 3).forEach((item, index) => {
+            collageItems.push({
+              id: `sub-image-${index}`,
+              kind: "sub-image",
+              imageSrc: item.imageSrc,
+              x: index === 0 ? 66 : 12,
+              y: index === 0 ? 54 : 62,
+              size: 64,
+              rotate: this.randomBetween(-8, 8),
+              zIndex: 6 + index,
+            });
+          });
+          if (mainImages.length > 3) {
+            collageItems.push({
+              id: "extra-image-count",
+              kind: "count",
+              text: `+${mainImages.length - 3}`,
+              x: 76,
+              y: 68,
+              size: 42,
+              rotate: 0,
+              zIndex: 9,
+            });
+          }
+        }
 
         if (hasMainImage && hasCanvasMemo) {
           collageItems.push({
@@ -1451,13 +1486,18 @@ window.addEventListener("load", () => {
         const memoItems = this.placedItems
           .filter((item) => item.type === "text" && item.text)
           .map((item) => item.text);
+        const mainImages = this.placedItems
+          .filter((item) => this.normalizePlacedItemType(item) === "photo" && item.imageSrc)
+          .slice(0, 4);
+        const stickers = this.placedItems
+          .filter((item) => this.normalizePlacedItemType(item) === "sticker");
         const canvasMemoText = memoItems[0] || "";
         const recordMemoText = canvasMemoText || this.currentRecord.memo || "";
         const tags = this.currentRecord.tags?.length
           ? this.currentRecord.tags.map((tag) => `#${String(tag).replace(/^#/, "")}`).join(" ")
           : "#감상 #다이어리 #덕꾸";
         const tagList = tags.split(/\s+/).filter(Boolean).slice(0, 4);
-        const cardType = this.mainImageSrc ? "image-polaroid" : "memo-collage";
+        const cardType = mainImages.length > 0 ? "image-polaroid" : "memo-collage";
 
         this.shareCard = {
           template: cardType,
@@ -1469,7 +1509,7 @@ window.addEventListener("load", () => {
           tags: tagList,
           memo: this.truncateShareText(recordMemoText, 42),
           tapes: this.buildShareTapes(cardType),
-          collageItems: this.buildShareCollageItems(cardType, canvasMemoText),
+          collageItems: this.buildShareCollageItems(cardType, canvasMemoText, mainImages, stickers),
         };
       },
       randomizeShareCard() {

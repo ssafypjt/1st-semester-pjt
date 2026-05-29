@@ -235,6 +235,29 @@
   overflow: hidden;
 }
 
+.share-card-collage-image {
+  border: 10px solid #fff;
+  border-bottom-width: 34px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 16px 28px rgba(58, 44, 72, .18);
+}
+
+.share-card-collage-sub-image {
+  border: 6px solid #fff;
+  border-bottom-width: 16px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 12px 18px rgba(58, 44, 72, .14);
+}
+
+.share-card-collage-count {
+  border-radius: 999px;
+  background: rgba(255,255,255,.86);
+  color: var(--share-accent);
+  font-weight: 950;
+}
+
 .share-card-collage-item img {
   width: 100%;
   height: 100%;
@@ -263,11 +286,6 @@
 .share-card-collage-sticker span {
   display: grid;
   place-items: center;
-}
-
-.share-card-collage-image {
-  border: 6px solid #fff;
-  box-shadow: 0 12px 18px rgba(58, 44, 72, .14);
 }
 
 .share-card-collage-memo {
@@ -383,11 +401,14 @@
 
 .share-card-image-polaroid .share-card-visual {
   min-height: 300px;
-  border: 12px solid #fff;
-  border-bottom-width: 48px;
-  border-radius: 10px;
-  background: rgba(255,255,255,.42);
-  transform: rotate(-3deg);
+  border: 0;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 80% 22%, rgba(255,255,255,.38) 0 22px, transparent 23px),
+    linear-gradient(rgba(255,255,255,.16) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.16) 1px, transparent 1px);
+  background-size: auto, 18px 18px, 18px 18px;
+  transform: none;
 }
 
 .share-card-diary {
