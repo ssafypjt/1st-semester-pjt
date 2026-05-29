@@ -1340,6 +1340,7 @@ window.addEventListener("load", () => {
       isShareDecorativeIcon(icon) {
         const value = String(icon || "").trim();
         if (!value) return false;
+        if (["#", "!", "T"].includes(value)) return false;
         if ([...value].length > 2) return false;
         return !/[A-Za-z0-9ㄱ-ㅎ가-힣]/.test(value);
       },
@@ -1418,22 +1419,7 @@ window.addEventListener("load", () => {
         });
 
         if (!hasMainImage) {
-          const fallbackStickers = ["✦", "♡", "♪", "★"];
-          const neededStickers = Math.max(0, 5 - stickerItems.length);
-          for (let index = 0; index < neededStickers; index += 1) {
-            collageItems.push({
-              id: `fallback-sticker-${index}`,
-              kind: "sticker",
-              icon: this.pickRandom(fallbackStickers),
-              x: this.randomBetween(10, 78),
-              y: this.randomBetween(12, 70),
-              size: this.randomBetween(32, 46),
-              rotate: this.randomBetween(-18, 18),
-              zIndex: 10 + index,
-            });
-          }
-
-          const shapeCount = 3 + Math.floor(Math.random() * 3);
+          const shapeCount = 5 + Math.floor(Math.random() * 3);
           for (let index = 0; index < shapeCount; index += 1) {
             collageItems.push({
               id: `shape-${index}`,

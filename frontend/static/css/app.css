@@ -327,11 +327,13 @@
 
 .share-card-collage-shape {
   border-radius: 999px;
-  background: rgba(255,255,255,.44);
+  background:
+    radial-gradient(circle at 35% 32%, rgba(255,255,255,.58), rgba(255,255,255,.16) 62%),
+    rgba(255,255,255,.22);
   color: var(--share-accent);
   font-size: 0;
   font-weight: 950;
-  opacity: .82;
+  opacity: .58;
 }
 
 .share-card-empty {
