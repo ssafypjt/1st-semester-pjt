@@ -6,9 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>덕꾸 Deokkku</title>
     {{ initial_route|json_script:"initial-route" }}
-    <link rel="stylesheet" href="{% static 'css/app.css' %}?v=share-card-8" />
+    <link rel="stylesheet" href="{% static 'css/app.css' %}?v=share-card-9" />
     <script defer src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-    <script defer src="{% static 'js/app.js' %}?v=share-card-8"></script>
+    <script defer src="{% static 'vendor/html2canvas.min.js' %}?v=1.4.1"></script>
+    <script defer src="{% static 'js/app.js' %}?v=share-card-9"></script>
   </head>
   <body>
     <div id="app" v-cloak>
@@ -261,7 +262,7 @@
                   <div class="share-card-top">
                     <span class="share-card-date">[[ shareCard.date ]]</span>
                     <span class="share-card-logo-wrapper" aria-label="Deokkku">
-                      <img class="share-card-logo" src="{% static 'images/mini_logo_transparent.png' %}?v=share-card-8" alt="" />
+                      <img class="share-card-logo" src="{% static 'images/mini_logo_transparent.png' %}?v=share-card-9" alt="" />
                     </span>
                   </div>
                   <div class="share-card-visual">
@@ -300,7 +301,7 @@
                   <p>임시 더미 데이터로 만든 모바일 공유 카드입니다.</p>
                   <div class="share-modal-actions">
                     <button class="share-button" type="button" @click="randomizeShareCard">다시 만들기</button>
-                    <button class="share-button primary" type="button" @click="downloadShareCard">이미지 저장</button>
+                    <button class="share-button primary" type="button" @click="downloadShareCard" :disabled="isShareSaving">[[ isShareSaving ? '저장 중...' : '이미지 저장' ]]</button>
                     <button class="share-button" type="button" @click="closeShareModal">닫기</button>
                   </div>
                 </aside>

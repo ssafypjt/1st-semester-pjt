@@ -455,6 +455,11 @@
   color: #fff;
 }
 
+.share-button:disabled {
+  cursor: wait;
+  opacity: .62;
+}
+
 @media (max-width: 760px) {
   .share-modal-body {
     grid-template-columns: 1fr;

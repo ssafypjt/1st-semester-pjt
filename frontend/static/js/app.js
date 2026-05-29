@@ -473,6 +473,7 @@ window.addEventListener("load", () => {
         activeTab: "전체",
         activeStickerCategory: "전체",
         isShareModalOpen: false,
+        isShareSaving: false,
         shareCard: {
           template: "memo-collage",
           theme: "#f6dde9",
@@ -1481,24 +1482,40 @@ window.addEventListener("load", () => {
       closeShareModal() {
         this.isShareModalOpen = false;
       },
+      shareCardFileName() {
+        const title = String(this.shareCard.title || this.currentRecord.title || "").trim();
+        const baseName = title
+          ? title.replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, "")
+          : "deokkku";
+        return `${baseName || "deokkku"}_sharecard.png`;
+      },
       async downloadShareCard() {
         const target = this.$refs.shareCard;
+        if (this.isShareSaving) return;
         if (!target || !window.html2canvas) {
-          console.log("share card image save requested, but html2canvas is unavailable", this.shareCard);
+          alert("이미지 저장 기능을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
+          console.error("html2canvas is unavailable", { target, shareCard: this.shareCard });
           return;
         }
+        this.isShareSaving = true;
         try {
           const canvas = await window.html2canvas(target, {
             backgroundColor: null,
-            scale: 2,
+            scale: 3,
             useCORS: true,
+            allowTaint: false,
+            logging: false,
+            removeContainer: true,
           });
           const link = document.createElement("a");
-          link.download = "deokkku-share-card.png";
+          link.download = this.shareCardFileName();
           link.href = canvas.toDataURL("image/png");
           link.click();
         } catch (error) {
-          console.log("share card image save failed", error);
+          console.error("share card image save failed", error);
+          alert("이미지 저장에 실패했습니다. 다시 시도해주세요.");
+        } finally {
+          this.isShareSaving = false;
         }
       },
       saveCard() {
