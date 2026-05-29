@@ -891,7 +891,7 @@ export default {
     apiRecordToSavedCard(record) {
       const cd = record.canvas_data || {};
       const placedItems = cd.placed_items || [];
-      const title = (cd.title || "").trim() || record.anime_title || "제목 없는 기록";
+      const title = (cd.title || "").trim() || record.work_title || "제목 없는 기록";
       const watchedDate = record.watched_date
         ? record.watched_date.replaceAll("-", ".")
         : "";
@@ -939,7 +939,7 @@ export default {
 
       try {
         const payload = {
-          anime_title: this.currentRecord.title || "제목 없는 기록",
+          work_title: this.currentRecord.title || "제목 없는 기록",
           rating: this.currentRecord.rating ?? null,
           watched_date: this.formatInputDate(this.currentRecord.date) || null,
           content: this.currentRecord.memo || "",
