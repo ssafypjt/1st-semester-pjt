@@ -90,7 +90,7 @@
   aspect-ratio: 9 / 16;
   justify-self: center;
   overflow: hidden;
-  padding: 28px;
+  padding: 22px 24px 28px;
   border: 0;
   border-radius: 28px;
   color: #332b3b;
@@ -108,16 +108,17 @@
 
 .share-card-top {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+  margin: -4px 0 0;
 }
 
 .share-card-date {
   display: inline-flex;
   flex: 0 0 auto;
   max-width: 132px;
-  padding: 7px 10px;
+  padding: 6px 10px;
   border-radius: 999px;
   background: rgba(255,255,255,.74);
   color: var(--share-accent);
@@ -129,13 +130,13 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 104px;
-  min-height: 54px;
+  width: 72px;
+  min-height: 42px;
   position: relative;
 }
 
 .share-card-logo {
-  width: 104px;
+  width: 72px;
   height: auto;
   display: block;
   object-fit: contain;
