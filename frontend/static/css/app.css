@@ -86,7 +86,8 @@
 .share-modal .share-card {
   position: relative;
   display: block;
-  width: min(340px, 100%);
+  width: 360px;
+  height: 640px;
   aspect-ratio: 9 / 16;
   justify-self: center;
   overflow: hidden;
@@ -488,7 +489,8 @@
   }
 
   .share-modal .share-card {
-    max-width: 300px;
+    width: 360px;
+    height: 640px;
   }
 
   .share-modal-actions {

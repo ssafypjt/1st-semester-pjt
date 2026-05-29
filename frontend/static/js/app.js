@@ -548,10 +548,10 @@ window.addEventListener("load", () => {
           { icon: "🐱", tone: "soft", category: "스티커" },
           { icon: "🍰", tone: "pink", category: "스티커" },
           { icon: "🎧", tone: "ink", category: "스티커" },
-          { icon: "tape", tone: "masking-tape tape-lavender", category: "스티커" },
-          { icon: "tape", tone: "masking-tape tape-rose", category: "스티커" },
-          { icon: "tape", tone: "masking-tape tape-mint", category: "스티커" },
-          { icon: "tape", tone: "masking-tape tape-grid", category: "스티커" },
+          { icon: "tape", tone: "masking-tape tape-lavender", category: "스티커", shareCategory: "masking-tape", shareVisible: false },
+          { icon: "tape", tone: "masking-tape tape-rose", category: "스티커", shareCategory: "masking-tape", shareVisible: false },
+          { icon: "tape", tone: "masking-tape tape-mint", category: "스티커", shareCategory: "masking-tape", shareVisible: false },
+          { icon: "tape", tone: "masking-tape tape-grid", category: "스티커", shareCategory: "masking-tape", shareVisible: false },
           { icon: "▶", tone: "purple", category: "아이콘" },
           { icon: "＋", tone: "line", category: "아이콘" },
           { icon: "↗", tone: "ink", category: "아이콘" },
@@ -1208,6 +1208,10 @@ window.addEventListener("load", () => {
           icon: sticker.icon,
           tone: sticker.tone,
           imageSrc: sticker.imageSrc || null,
+          category: shareCategory,
+          sourceCategory: sticker.category || "",
+          shareCategory,
+          shareVisible: sticker.shareVisible !== false && !this.isShareExcludedCategory(shareCategory),
           x: 24 + (this.placedItems.length * 11) % 52,
           y: 20 + (this.placedItems.length * 17) % 56,
           rotate: -14 + (this.placedItems.length * 9) % 28,
@@ -1230,6 +1234,9 @@ window.addEventListener("load", () => {
             icon: "",
             imageSrc: reader.result,
             tone: "custom-image",
+            category: "photo",
+            shareCategory: "photo",
+            shareVisible: true,
             x: 31 + (this.placedItems.length * 7) % 38,
             y: 24 + (this.placedItems.length * 9) % 44,
             rotate: -6 + (this.placedItems.length * 5) % 14,
@@ -1250,6 +1257,9 @@ window.addEventListener("load", () => {
           type: "text",
           text: "새 메모",
           tone: "memo-text",
+          category: "memo",
+          shareCategory: "memo",
+          shareVisible: true,
           x: 38 + (this.placedItems.length * 9) % 35,
           y: 34 + (this.placedItems.length * 7) % 36,
           rotate: -4 + (this.placedItems.length * 3) % 9,
@@ -1328,15 +1338,7 @@ window.addEventListener("load", () => {
         };
       },
       buildShareTapes(cardType) {
-        if (cardType === "memo-collage") return [];
-        const count = cardType === "image-polaroid" ? 2 : 3;
-        return Array.from({ length: count }, (_, index) => ({
-          id: `tape-${index}`,
-          x: this.randomBetween(8, 72),
-          y: this.randomBetween(6, 72),
-          width: this.randomBetween(54, 86),
-          rotate: this.randomBetween(-18, 18),
-        }));
+        return [];
       },
       randomBetween(min, max) {
         return min + Math.random() * (max - min);
@@ -1348,7 +1350,34 @@ window.addEventListener("load", () => {
         if ([...value].length > 2) return false;
         return !/[A-Za-z0-9ㄱ-ㅎ가-힣]/.test(value);
       },
-      normalizePlacedItemType(item) {
+      normalizeShareCategory(item = {}) {
+        const explicitCategory = item.shareCategory || item.category || "";
+        const tone = String(item.tone || "");
+        const icon = String(item.icon || "");
+
+        if (item.shareVisible === false) return explicitCategory || "decoration-only";
+        if (tone.includes("masking-tape")) return "masking-tape";
+        if (tone.includes("frame") || tone.includes("bg")) return "decoration-only";
+        if (item.type === "photo" || tone === "custom-image") return "photo";
+        if (item.type === "text" || tone.includes("memo-text")) return "memo";
+        if (item.imageSrc) return "character";
+        if (tone.includes("bubble")) return "emotion";
+        if (icon === "tape") return "masking-tape";
+        if (["masking-tape", "decoration-only", "photo", "memo", "character", "emotion", "sticker"].includes(explicitCategory)) {
+          return explicitCategory;
+        }
+        return "sticker";
+      },
+      isShareExcludedCategory(category) {
+        return ["masking-tape", "decoration-only", "editor-only"].includes(category);
+      },
+      isShareVisibleItem(item) {
+        const category = this.normalizeShareCategory(item);
+        if (item.shareVisible === false) return false;
+        if (this.isShareExcludedCategory(category)) return false;
+        return ["photo", "memo", "sticker", "character", "emotion"].includes(category);
+      },      normalizePlacedItemType(item) {
+        if (!this.isShareVisibleItem(item)) return "";
         if (item.type) return item.type;
         if (item.imageSrc && item.tone === "custom-image") return "photo";
         if (item.imageSrc || item.icon) return "sticker";
@@ -1539,8 +1568,26 @@ window.addEventListener("load", () => {
         }
         this.isShareSaving = true;
         try {
+          await Promise.all(
+            Array.from(target.querySelectorAll("img")).map((img) => {
+              if (img.complete) return Promise.resolve();
+              return new Promise((resolve) => {
+                img.onload = resolve;
+                img.onerror = resolve;
+              });
+            })
+          );
+          const rect = target.getBoundingClientRect();
+          const cardWidth = Math.round(rect.width);
+          const cardHeight = Math.round(rect.height);
           const canvas = await window.html2canvas(target, {
             backgroundColor: null,
+            width: cardWidth,
+            height: cardHeight,
+            windowWidth: cardWidth,
+            windowHeight: cardHeight,
+            scrollX: 0,
+            scrollY: 0,
             scale: 3,
             useCORS: true,
             allowTaint: false,

@@ -6,10 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>덕꾸 Deokkku</title>
     {{ initial_route|json_script:"initial-route" }}
-    <link rel="stylesheet" href="{% static 'css/app.css' %}?v=share-card-10" />
+    <link rel="stylesheet" href="{% static 'css/app.css' %}?v=share-filter-1" />
     <script defer src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <script defer src="{% static 'vendor/html2canvas.min.js' %}?v=1.4.1"></script>
-    <script defer src="{% static 'js/app.js' %}?v=share-card-10"></script>
+    <script defer src="{% static 'js/app.js' %}?v=share-filter-1"></script>
   </head>
   <body>
     <div id="app" v-cloak>
@@ -262,7 +262,7 @@
                   <div class="share-card-top">
                     <span class="share-card-date">[[ shareCard.date ]]</span>
                     <span class="share-card-logo-wrapper" aria-label="Deokkku">
-                      <img class="share-card-logo" src="{% static 'images/mini_logo_transparent.png' %}?v=share-card-10" alt="" />
+                      <img class="share-card-logo" src="{% static 'images/mini_logo_transparent.png' %}?v=share-filter-1" alt="" />
                     </span>
                   </div>
                   <div class="share-card-visual">
