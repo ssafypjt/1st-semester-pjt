@@ -15,10 +15,10 @@ class FavoriteSceneInline(admin.TabularInline):
 
 @admin.register(Record)
 class RecordAdmin(admin.ModelAdmin):
-    list_display = ('id', 'anime', 'user', 'rating', 'visibility',
+    list_display = ('id', 'work', 'user', 'rating', 'visibility',
                     'status', 'created_at')
     list_filter = ('status', 'visibility')
-    search_fields = ('anime__title', 'user__nickname', 'content')
+    search_fields = ('work__title', 'user__nickname', 'content')
     inlines = [DecorationInline, FavoriteSceneInline]
 
 

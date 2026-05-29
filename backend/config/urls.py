@@ -103,8 +103,12 @@ class DistFrontendAppView(TemplateView):
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/auth/', include('accounts.urls')),
+<<<<<<< HEAD
+    path('api/works/', include('works.urls')),
+=======
     path('api/analyze/', analyze_api, name='analyze-api'),
     path('api/animes/', include('animes.urls')),
+>>>>>>> origin/frontend
     path('api/albums/', include('albums.urls')),
     path('api/records/', include('records.urls')),
     path('', RedirectView.as_view(url='/deokkku/login/', permanent=False), name='home'),
@@ -117,7 +121,7 @@ urlpatterns = [
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
-# Vue SPA fallback - 모든 비-API 경로를 index.html로 라우팅
+# Vue SPA fallback
 urlpatterns += [
     re_path(r'^(?!api/|admin/|static/|media/).*$',
             DistFrontendAppView.as_view(),

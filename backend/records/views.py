@@ -35,15 +35,20 @@ class RecordViewSet(viewsets.ModelViewSet):
     """
     permission_classes = [IsOwnerOrReadOnly]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['anime__title', 'anime__title_ko', 'content']
+    search_fields = ['work__title', 'work__title_ko', 'content']
     ordering_fields = ['created_at', 'rating', 'like_count']
 
     def get_queryset(self):
         user = self.request.user
-        qs = Record.objects.select_related('user', 'anime')
+        qs = Record.objects.select_related('user', 'work')
         if user.is_authenticated:
-            return qs.filter(user=user)
-        return qs.filter(visibility='public')
+            # 본인 기록은 draft 포함 전체, 타인 기록은 공개+게시 완료만
+            return qs.filter(
+                Q(user=user) |
+                Q(visibility='public', status='published')
+            )
+        # 비로그인: 공개+게시 완료만
+        return qs.filter(visibility='public', status='published')
 
     def get_serializer_class(self):
         if self.action == 'list':

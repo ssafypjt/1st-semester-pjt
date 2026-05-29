@@ -454,6 +454,8 @@ export default {
         { id: "image", label: "이미지 저장" },
       ],
       ai: defaultAnalysis,
+      currentRecordId: null,  // 현재 편집 중인 백엔드 Record ID (null이면 신규)
+      isSaving: false,         // 저장 중 중복 요청 방지
     };
   },
   computed: {
@@ -528,9 +530,7 @@ export default {
       const response = await fetch("/api/auth/csrf/", {
         credentials: "include",
         cache: "no-store",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
       });
       if (!response.ok) {
         const errorBody = await response.text();
@@ -569,6 +569,8 @@ export default {
         console.error("API request failed:", response.status, detail);
         throw new Error(`API request failed: ${response.status} ${detail}`);
       }
+      // 204 No Content (DELETE 등) — 본문 없음
+      if (response.status === 204) return null;
       return response.json();
     },
     async logout() {
@@ -708,17 +710,34 @@ export default {
       });
       this.selectedDecorationId = nextId;
     },
-    handleImageUpload(event) {
+    async handleImageUpload(event) {
       const file = event.target.files?.[0];
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
+      event.target.value = "";
+
+      try {
+        const csrfToken = await this.getCsrfToken();
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const response = await fetch("/api/records/upload/", {
+          method: "POST",
+          credentials: "include",
+          headers: { "X-CSRFToken": csrfToken },
+          body: formData,
+        });
+        if (!response.ok) {
+          const err = await response.text();
+          throw new Error(`이미지 업로드 실패: ${response.status} ${err}`);
+        }
+        const data = await response.json();
+
         this.pushUndoState();
         const nextId = Date.now();
         const nextItem = {
           id: nextId,
           icon: "",
-          imageSrc: reader.result,
+          imageSrc: data.url,  // 백엔드 protected URL
           tone: "custom-image",
           x: 31 + (this.placedItems.length * 7) % 38,
           y: 24 + (this.placedItems.length * 9) % 44,
@@ -727,11 +746,12 @@ export default {
           zIndex: this.nextLayerZIndex(),
         };
         this.placedItems.push(nextItem);
-        this.mainImageSrc = reader.result;
+        this.mainImageSrc = data.url;
         this.selectedDecorationId = nextId;
-        event.target.value = "";
-      };
-      reader.readAsDataURL(file);
+      } catch (error) {
+        console.error(error);
+        alert("이미지 업로드에 실패했습니다. 다시 시도해주세요.");
+      }
     },
     removeSticker(id) {
       this.pushUndoState();
@@ -855,6 +875,8 @@ export default {
         tags: [],
       };
       if (this.recordModalMode !== "edit") {
+        // 신규 기록이면 백엔드 ID 초기화 (저장 시 POST)
+        this.currentRecordId = null;
         this.placedItems = [];
         this.mainImageSrc = "";
         this.selectedDecorationId = null;
@@ -864,59 +886,118 @@ export default {
       this.activePage = "기록 작성";
       this.isRecordModalOpen = false;
     },
-    savedCardsKey() {
-      return "deokkkuSavedCards:vite";
+
+    // ── 백엔드 Record → 프론트 savedCard 포맷 변환 헬퍼 ──────────────────
+    apiRecordToSavedCard(record) {
+      const cd = record.canvas_data || {};
+      const placedItems = cd.placed_items || [];
+      const title = (cd.title || "").trim() || record.anime_title || "제목 없는 기록";
+      const watchedDate = record.watched_date
+        ? record.watched_date.replaceAll("-", ".")
+        : "";
+      return {
+        id: record.id,
+        title,
+        date: watchedDate,
+        rating: record.rating ?? 0,
+        memoCount: placedItems.filter((i) => i.type === "text").length,
+        stickerCount: placedItems.filter((i) => i.type !== "text").length,
+        savedAt: record.created_at,
+        snapshot: {
+          record: {
+            title,
+            date: watchedDate,
+            rating: record.rating ?? 0,
+            memo: record.content || "",
+            tags: [],
+          },
+          placedItems,
+          mainImageSrc: cd.main_image_src || "",
+          analysis: cd.analysis || null,
+        },
+      };
     },
-    loadSavedCards() {
+
+    // ── 기록 목록 불러오기 (GET /api/records/) ────────────────────────────
+    async loadSavedCards() {
       try {
-        const storedCards = JSON.parse(localStorage.getItem(this.savedCardsKey()) || "[]");
-        this.savedCards = Array.isArray(storedCards) ? storedCards : [];
+        const data = await this.apiFetch("/api/records/");
+        const results = Array.isArray(data) ? data : (data.results || []);
+        this.savedCards = results.map((r) => this.apiRecordToSavedCard(r));
       } catch (error) {
+        console.error("기록 목록 불러오기 실패:", error);
         this.savedCards = [];
       }
     },
-    persistSavedCards() {
+
+    // ── 저장 (신규: POST / 수정: PATCH) ──────────────────────────────────
+    async saveCard() {
+      const now = Date.now();
+      if (now - this.lastSaveAt < 350 || this.isSaving) return;
+      this.lastSaveAt = now;
+      this.isSaving = true;
+
       try {
-        localStorage.setItem(this.savedCardsKey(), JSON.stringify(this.savedCards));
+        const payload = {
+          anime_title: this.currentRecord.title || "제목 없는 기록",
+          rating: this.currentRecord.rating ?? null,
+          watched_date: this.formatInputDate(this.currentRecord.date) || null,
+          content: this.currentRecord.memo || "",
+          canvas_data: {
+            title: this.currentRecord.title,
+            placed_items: this.cloneForSave(this.placedItems),
+            main_image_src: this.mainImageSrc,
+            analysis: this.cloneForSave(this.ai),
+          },
+          status: "published",
+          visibility: "private",
+        };
+
+        let record;
+        if (this.currentRecordId) {
+          // 기존 기록 수정 (PATCH)
+          record = await this.apiFetch(`/api/records/${this.currentRecordId}/`, {
+            method: "PATCH",
+            body: JSON.stringify(payload),
+          });
+          const updated = this.apiRecordToSavedCard(record);
+          const idx = this.savedCards.findIndex((c) => c.id === this.currentRecordId);
+          if (idx !== -1) this.savedCards.splice(idx, 1, updated);
+          else this.savedCards.unshift(updated);
+        } else {
+          // 새 기록 생성 (POST)
+          record = await this.apiFetch("/api/records/", {
+            method: "POST",
+            body: JSON.stringify(payload),
+          });
+          this.currentRecordId = record.id;
+          this.savedCards.unshift(this.apiRecordToSavedCard(record));
+        }
+
+        this.toastMessage = "저장되었습니다";
       } catch (error) {
-        // localStorage를 사용할 수 없는 환경에서는 현재 화면 상태만 유지합니다.
+        console.error("저장 실패:", error);
+        this.toastMessage = "저장에 실패했습니다. 다시 시도해주세요.";
+      } finally {
+        this.isSaving = false;
       }
     },
-    saveCard() {
-      const now = Date.now();
-      if (now - this.lastSaveAt < 350) return;
-      this.lastSaveAt = now;
-      const savedCard = {
-        id: now,
-        title: this.currentRecord.title || "제목 없는 기록",
-        date: this.currentRecord.date,
-        rating: this.currentRecord.rating,
-        itemCount: this.placedItems.length + (this.mainImageSrc ? 1 : 0),
-        memoCount: this.placedItems.filter((item) => item.type === "text").length,
-        stickerCount: this.placedItems.filter((item) => item.type !== "text").length,
-        savedAt: new Date().toISOString(),
-        snapshot: {
-          record: this.cloneForSave(this.currentRecord),
-          placedItems: this.cloneForSave(this.placedItems),
-          mainImageSrc: this.mainImageSrc,
-          analysis: this.cloneForSave(this.ai),
-        },
-      };
-      this.savedCards.unshift(savedCard);
-      this.toastMessage = "저장되었습니다";
-      this.persistSavedCards();
-    },
+
+    // ── 저장된 카드 열기 ──────────────────────────────────────────────────
     openSavedCard(card) {
-      this.currentRecord = this.cloneForSave(card.snapshot?.record || {
-        title: card.title,
-        date: card.date,
-        rating: card.rating,
-        memo: "",
-        tags: [],
-      });
+      this.currentRecord = this.cloneForSave(
+        card.snapshot?.record || {
+          title: card.title,
+          date: card.date,
+          rating: card.rating,
+          memo: "",
+          tags: [],
+        }
+      );
       this.placedItems = this.cloneForSave(card.snapshot?.placedItems || []);
       this.mainImageSrc = card.snapshot?.mainImageSrc || "";
       this.selectedDecorationId = null;
+      this.currentRecordId = card.id;  // 수정 모드 — 저장 시 PATCH
       this.activePage = "기록 작성";
       this.toastMessage = "";
       this.undoHistory = [];
@@ -925,9 +1006,19 @@ export default {
         this.ai = this.cloneForSave(card.snapshot.analysis);
       }
     },
-    deleteSavedCard(cardId) {
-      this.savedCards = this.savedCards.filter((card) => card.id !== cardId);
-      this.persistSavedCards();
+
+    // ── 기록 삭제 (DELETE /api/records/{id}/) ────────────────────────────
+    async deleteSavedCard(cardId) {
+      try {
+        await this.apiFetch(`/api/records/${cardId}/`, { method: "DELETE" });
+        this.savedCards = this.savedCards.filter((card) => card.id !== cardId);
+        if (this.currentRecordId === cardId) {
+          this.currentRecordId = null;
+        }
+      } catch (error) {
+        console.error("삭제 실패:", error);
+        alert("삭제에 실패했습니다. 다시 시도해주세요.");
+      }
     },
   },
 };
