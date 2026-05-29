@@ -26,3 +26,6 @@ frontend/node_modules/
 Thumbs.db
 .vscode/
 .idea/
+
+# Logs
+PROJECT_CONTEXT.md

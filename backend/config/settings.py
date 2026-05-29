@@ -49,9 +49,11 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'accounts',
-    'animes',
+    'works',
     'albums',
     'records',
+    # DB 레코드 삭제 시 ImageField/FileField 물리 파일 동반 삭제
+    'django_cleanup.apps.CleanupConfig',
 ]
 
 MIDDLEWARE = [
@@ -172,7 +174,7 @@ if not DEBUG:
     SESSION_COOKIE_SECURE = env('SESSION_COOKIE_SECURE')
     CSRF_COOKIE_SECURE = env('CSRF_COOKIE_SECURE')
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-    SECURE_HSTS_SECONDS = 60 * 60 * 24 * 30
+    SECURE_HSTS_SECONDS = 60 
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     X_FRAME_OPTIONS = 'DENY'

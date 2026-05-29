@@ -38,8 +38,8 @@ class Record(models.Model):
         on_delete=models.CASCADE,
         related_name='records',
     )
-    anime = models.ForeignKey(
-        'animes.Anime',
+    work = models.ForeignKey(
+        'works.Work',
         on_delete=models.PROTECT,
         related_name='records',
     )
@@ -62,7 +62,7 @@ class Record(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f'{self.anime} - {self.user.nickname}'
+        return f'{self.work} - {self.user.nickname}'
 
 
 class RecordImage(models.Model):

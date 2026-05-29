@@ -1,7 +1,7 @@
 from rest_framework.routers import DefaultRouter
-from .views import AnimeViewSet
+from .views import WorkViewSet
 
 router = DefaultRouter()
-router.register('', AnimeViewSet, basename='anime')
+router.register('', WorkViewSet, basename='work')
 
 urlpatterns = router.urls
