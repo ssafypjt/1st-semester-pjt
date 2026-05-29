@@ -1325,6 +1325,7 @@ window.addEventListener("load", () => {
         };
       },
       buildShareTapes(cardType) {
+        if (cardType === "memo-collage") return [];
         const count = cardType === "image-polaroid" ? 2 : 3;
         return Array.from({ length: count }, (_, index) => ({
           id: `tape-${index}`,
@@ -1356,12 +1357,13 @@ window.addEventListener("load", () => {
               { x: 18, y: 70 },
             ]
           : [
-              { x: 72, y: 18 },
-              { x: 12, y: 28 },
-              { x: 76, y: 48 },
-              { x: 16, y: 68 },
-              { x: 58, y: 74 },
+              { x: 16, y: 20 },
+              { x: 72, y: 20 },
+              { x: 18, y: 48 },
+              { x: 74, y: 50 },
+              { x: 48, y: 68 },
             ];
+        const availableStickerSlots = [...stickerSlots].sort(() => Math.random() - 0.5);
 
         if (hasMainImage) {
           collageItems.push({
@@ -1416,7 +1418,7 @@ window.addEventListener("load", () => {
           const icon = !isMemo && !hasImage ? item.icon : "";
           if (!hasImage && !icon) return;
 
-          const slot = stickerSlots[index % stickerSlots.length];
+          const slot = availableStickerSlots[index % availableStickerSlots.length];
           collageItems.push({
             id: item.id || `item-${index}`,
             kind: hasImage ? "sticker-image" : "sticker",
@@ -1424,44 +1426,15 @@ window.addEventListener("load", () => {
             icon,
             x: hasMainImage
               ? this.clampShareValue(16 + (Number(item.x) || 0) * 0.62 + (index % 2) * 6, 8, 76)
-              : this.clampShareValue(slot.x + this.randomBetween(-4, 4), 8, 78),
+              : this.clampShareValue(slot.x + this.randomBetween(-2.5, 2.5), 8, 78),
             y: hasMainImage
               ? this.clampShareValue(14 + (Number(item.y) || 0) * 0.5 + (index % 3) * 4, 8, 68)
-              : this.clampShareValue(slot.y + this.randomBetween(-5, 5), 8, 74),
+              : this.clampShareValue(slot.y + this.randomBetween(-3, 3), 8, 70),
             size: hasImage ? this.randomBetween(38, 50) : this.randomBetween(32, 44),
-            rotate: this.randomBetween(-18, 18),
+            rotate: this.randomBetween(-12, 12),
             zIndex: 9 + index,
           });
         });
-
-        if (!hasMainImage) {
-          const shapeCount = hasCanvasMemo ? 5 + Math.floor(Math.random() * 3) : 8 + Math.floor(Math.random() * 3);
-          for (let index = 0; index < shapeCount; index += 1) {
-            collageItems.push({
-              id: `shape-${index}`,
-              kind: "shape",
-              icon: "",
-              x: this.randomBetween(8, 78),
-              y: this.randomBetween(10, 70),
-              size: this.randomBetween(22, 42),
-              rotate: this.randomBetween(-20, 20),
-              zIndex: 2 + index,
-            });
-          }
-        }
-
-        if (!collageItems.length) {
-          collageItems.push({
-            id: "fallback-shape",
-            kind: "shape",
-            icon: "",
-            x: 42,
-            y: 36,
-            size: 70,
-            rotate: 0,
-            zIndex: 4,
-          });
-        }
 
         return collageItems.slice(0, hasMainImage ? 9 : 11);
       },

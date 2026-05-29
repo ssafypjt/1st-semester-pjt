@@ -188,6 +188,11 @@
   display: none;
 }
 
+.share-card-memo-collage .share-card-tape,
+.share-card-memo-collage .share-card-collage-shape {
+  display: none;
+}
+
 .share-card-mark::before,
 .share-card-mark::after {
   content: "";
@@ -240,13 +245,15 @@
   background: transparent;
   font-size: 34px;
   line-height: 1;
-  filter: drop-shadow(0 5px 8px rgba(58, 44, 72, .14));
+  filter: drop-shadow(0 4px 6px rgba(58, 44, 72, .16));
+  opacity: .98;
 }
 
 .share-card-collage-sticker-image {
   background: transparent;
   border-radius: 8px;
-  filter: drop-shadow(0 5px 8px rgba(58, 44, 72, .14));
+  filter: drop-shadow(0 4px 6px rgba(58, 44, 72, .16));
+  opacity: .98;
 }
 
 .share-card-collage-sticker-image img {
@@ -298,7 +305,7 @@
 
 .share-card-memo-collage .share-card-collage-sticker,
 .share-card-memo-collage .share-card-collage-sticker-image {
-  filter: drop-shadow(0 7px 10px rgba(58, 44, 72, .16));
+  filter: drop-shadow(0 5px 8px rgba(58, 44, 72, .18));
 }
 
 .share-card-collage-shape {
