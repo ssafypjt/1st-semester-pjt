@@ -77,6 +77,12 @@ class RecordDetailSerializer(_OwnershipMixin, serializers.ModelSerializer):
 
     작품은 작품명 텍스트(work_title)로 받는다. 같은 제목이면 Work 재사용,
     없으면 새로 만든다. 하위호환을 위해 work_id 도 받지만 work_title 우선.
+
+    work_type_hint:
+        동명이작 구분을 위한 선택적 필드.
+        "강철의 연금술사"(애니) vs "강철의 연금술사"(도서)처럼
+        title_ko 가 같아도 work_type 이 다르면 별개의 Work 로 처리한다.
+        미전송 시 기본값 'anime'.
     """
     work = WorkSerializer(read_only=True)
     work_id = serializers.PrimaryKeyRelatedField(
@@ -85,6 +91,11 @@ class RecordDetailSerializer(_OwnershipMixin, serializers.ModelSerializer):
     )
     work_title = serializers.CharField(write_only=True, required=False,
                                        allow_blank=True)
+    work_type_hint = serializers.ChoiceField(
+        choices=Work.TYPE_CHOICES,
+        write_only=True, required=False, default='anime',
+        help_text='동명이작 구분용. work_title 과 함께 사용. 기본값: anime',
+    )
     user_nickname = serializers.CharField(source='user.nickname', read_only=True)
     decorations = DecorationSerializer(many=True, read_only=True)
     favorite_scenes = FavoriteSceneSerializer(many=True, read_only=True)
@@ -93,6 +104,7 @@ class RecordDetailSerializer(_OwnershipMixin, serializers.ModelSerializer):
     class Meta:
         model = Record
         fields = ['id', 'user_nickname', 'work', 'work_id', 'work_title',
+                  'work_type_hint',
                   'rating', 'watched_date', 'content', 'canvas_data', 'status',
                   'visibility', 'like_count', 'comment_count',
                   'decorations', 'favorite_scenes', 'is_mine',
@@ -102,12 +114,18 @@ class RecordDetailSerializer(_OwnershipMixin, serializers.ModelSerializer):
 
     def _resolve_work(self, validated_data):
         title = (validated_data.pop('work_title', '') or '').strip()
+        work_type = validated_data.pop('work_type_hint', 'anime')
         if title:
+            # title_ko + work_type 복합 키로 동명이작 구분.
+            # 2단계에서 외부 API 연동 시 source + external_id 기반으로 교체 예정.
             work, _ = Work.objects.get_or_create(
                 title_ko=title,
+                work_type=work_type,
                 defaults={'title': title},
             )
             validated_data['work'] = work
+        else:
+            validated_data.pop('work_type_hint', None)  # work_id 경로면 제거
 
     def validate(self, attrs):
         if self.instance is None:

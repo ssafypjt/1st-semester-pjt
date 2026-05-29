@@ -16,7 +16,7 @@ urlpatterns = [
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
-# Vue SPA fallback - 모든 비-API 경로를 index.html로 라우팅
+# Vue SPA fallback
 urlpatterns += [
     re_path(r'^(?!api/|admin/|static/|media/).*$',
             TemplateView.as_view(template_name='index.html'),

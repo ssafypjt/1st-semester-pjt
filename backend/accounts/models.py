@@ -88,7 +88,7 @@ class SocialAccount(models.Model):
 
     class Meta:
         db_table = 'social_account'
-        unique_together = [('provider', 'provider_id')]  # 동일 소셜 계정 중복 연결 방지
+        unique_together = [('provider', 'provider_id')]
 
     def __str__(self):
         return f'{self.user.nickname} — {self.provider}'

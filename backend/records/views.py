@@ -41,7 +41,7 @@ class RecordViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = Record.objects.select_related('user', 'anime')
+        qs = Record.objects.select_related('user', 'work')
         if user.is_authenticated:
             # 본인 기록은 draft 포함 전체, 타인 기록은 공개+게시 완료만
             return qs.filter(
