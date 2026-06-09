@@ -509,6 +509,21 @@ window.addEventListener("load", () => {
         recordModalMode: "create",
         savedCards: [],
         currentUserEmail: "",
+        currentUser: null,
+        isProfileSaving: false,
+        showProfileMenu: false,
+        isProfileModalOpen: false,
+        profileForm: {
+          nickname: "",
+          profileImage: null,
+          removeProfileImage: false,
+        },
+        profilePreviewLocalUrl: "",
+        profileStatus: {
+          type: "",
+          message: "",
+        },
+        selectedBadgeIds: [],
         editingSavedCardId: null,
         undoHistory: [],
         layerZIndex: 0,
@@ -655,6 +670,55 @@ window.addEventListener("load", () => {
       canUndo() {
         return this.undoHistory.length > 0;
       },
+      profilePreviewUrl() {
+        return this.profilePreviewLocalUrl || this.currentUser?.profile_image || "";
+      },
+      profileInitial() {
+        const source = this.currentUser?.nickname || this.currentUser?.email || "?";
+        return source.trim().slice(0, 1).toUpperCase();
+      },
+      activityStats() {
+        return this.getActivityStats();
+      },
+      profileStats() {
+        const stats = this.activityStats;
+        return [
+          { icon: "✏", label: "작성한 기록", value: stats.records },
+          { icon: "▣", label: "내 앨범", value: stats.albums },
+          { icon: "↗", label: "공유 카드", value: stats.shares },
+          { icon: "•", label: "최근 활동", value: stats.recent },
+        ];
+      },
+      availableBadges() {
+        return this.getUserBadges();
+      },
+      featuredBadges() {
+        const unlocked = this.availableBadges.filter((badge) => badge.unlocked);
+        if (!unlocked.length) {
+          return [{ id: "starter", icon: "✨", label: "아카이브 준비중" }];
+        }
+        const selected = this.selectedBadgeIds
+          .map((id) => unlocked.find((badge) => badge.id === id))
+          .filter(Boolean);
+        return (selected.length ? selected : unlocked).slice(0, 3);
+      },
+      recentActivities() {
+        const saved = (this.savedCards || []).slice(0, 4).map((card) => ({
+          id: `saved-${card.id}`,
+          icon: "▣",
+          title: card.title || "저장한 다이어리",
+          description: "내 앨범에 저장한 감상 카드",
+          date: card.date || "최근",
+        }));
+        const records = (this.records || []).slice(0, 4).map((record) => ({
+          id: `record-${record.id}`,
+          icon: "✏",
+          title: record.title || "감상 기록",
+          description: record.memo || "작성한 감상 기록",
+          date: record.date || "최근",
+        }));
+        return [...saved, ...records].slice(0, 5);
+      },
       shareTemplateLabel() {
         const labels = {
           "image-polaroid": "이미지 폴라로이드",
@@ -678,6 +742,13 @@ window.addEventListener("load", () => {
         return descriptions[this.activePage] || "덕꾸 기록을 관리합니다.";
       },
       detailCards() {
+        if (this.activePage === this.nav[4]) {
+          return [
+            { icon: "✏", title: "기록 작성", body: "새 감상 다이어리를 작성합니다.", action: this.nav[2] },
+            { icon: "▣", title: "내 앨범", body: "작성한 기록을 확인합니다.", action: this.nav[1] },
+            { icon: "↗", title: "공유 페이지", body: "공유 이미지를 생성하고 저장합니다.", action: "공유 페이지" },
+          ];
+        }
         const cards = {
           홈: [
             { title: "최근 기록", body: "방금 저장했거나 최근 편집한 다꾸 기록을 빠르게 다시 엽니다.", action: "기록 작성" },
@@ -709,7 +780,7 @@ window.addEventListener("load", () => {
           ],
           설정: [
             { title: "공개 범위", body: "기록별 공개/비공개 기본값을 설정합니다." },
-            { title: "공유 이미지", body: "스토리, 피드, 링크 카드 출력 옵션을 조정합니다." },
+            { title: "공유 이미지", body: "완성한 기록을 이미지로 생성하고 저장합니다." },
           ],
         };
         return cards[this.activePage] || [];
@@ -731,6 +802,10 @@ window.addEventListener("load", () => {
       };
       document.addEventListener("click", this.handleSaveControl, true);
       document.addEventListener("pointerdown", this.handleSaveControl, true);
+      document.addEventListener("click", this.handleProfileOutsideClick);
+      document.addEventListener("keydown", this.handleGlobalKeydown);
+      this.loadCurrentUser();
+      this.loadRepresentativeBadges();
       this.loadSavedCards();
       this.loadRecords();
     },
@@ -738,6 +813,8 @@ window.addEventListener("load", () => {
       window.removeEventListener("popstate", this.handlePopState);
       document.removeEventListener("click", this.handleSaveControl, true);
       document.removeEventListener("pointerdown", this.handleSaveControl, true);
+      document.removeEventListener("click", this.handleProfileOutsideClick);
+      document.removeEventListener("keydown", this.handleGlobalKeydown);
     },
     methods: {
       routeForPage(page, objectId = null) {
@@ -871,6 +948,210 @@ window.addEventListener("load", () => {
         this.csrfToken = data.csrfToken || "";
         return this.csrfToken;
       },
+      toggleProfileMenu() {
+        this.showProfileMenu = !this.showProfileMenu;
+      },
+      closeProfileMenu() {
+        this.showProfileMenu = false;
+      },
+      handleProfileOutsideClick(event) {
+        if (!this.showProfileMenu) return;
+        const menu = this.$refs.profileMenu;
+        if (menu && !menu.contains(event.target)) {
+          this.closeProfileMenu();
+        }
+      },
+      handleGlobalKeydown(event) {
+        if (event.key !== "Escape") return;
+        this.closeProfileMenu();
+        if (this.isProfileModalOpen) {
+          this.closeProfileModal();
+        }
+      },
+      openProfileModal() {
+        this.resetProfileForm();
+        this.isProfileModalOpen = true;
+      },
+      closeProfileModal() {
+        this.isProfileModalOpen = false;
+        this.resetProfileForm();
+      },
+      badgeStorageKey() {
+        return `deokkkuRepresentativeBadges:${this.currentUser?.email || this.currentUserEmail || "guest"}`;
+      },
+      loadRepresentativeBadges() {
+        try {
+          const stored = JSON.parse(localStorage.getItem(this.badgeStorageKey()) || "[]");
+          this.selectedBadgeIds = Array.isArray(stored) ? stored.slice(0, 3) : [];
+        } catch (error) {
+          this.selectedBadgeIds = [];
+        }
+      },
+      persistRepresentativeBadges() {
+        try {
+          localStorage.setItem(this.badgeStorageKey(), JSON.stringify(this.selectedBadgeIds.slice(0, 3)));
+        } catch (error) {
+          // 대표 뱃지는 화면 표시용이므로 저장 실패 시 현재 세션 상태만 유지합니다.
+        }
+      },
+      toggleRepresentativeBadge(badge) {
+        if (!badge.unlocked) return;
+        if (this.selectedBadgeIds.includes(badge.id)) {
+          this.selectedBadgeIds = this.selectedBadgeIds.filter((id) => id !== badge.id);
+        } else {
+          this.selectedBadgeIds = [...this.selectedBadgeIds, badge.id].slice(-3);
+        }
+        this.persistRepresentativeBadges();
+      },
+      getActivityStats() {
+        const records = Array.isArray(this.records) ? this.records.length : 0;
+        const albums = Array.isArray(this.savedCards) ? this.savedCards.length : 0;
+        const shares = 0;
+        return {
+          records,
+          albums,
+          shares,
+          recent: Math.min(records + albums + shares, 9),
+        };
+      },
+      getFavoriteGenres() {
+        return [];
+      },
+      getUserBadges() {
+        const stats = this.getActivityStats();
+        const ratedCount = (this.records || []).filter((record) => Number(record.rating || 0) > 0).length
+          + (this.savedCards || []).filter((card) => Number(card.rating || 0) > 0).length;
+        return [
+          {
+            id: "first-record",
+            icon: "🏆",
+            label: "첫 기록 작성",
+            description: "기록 1개 이상",
+            unlocked: stats.records + stats.albums >= 1,
+          },
+          {
+            id: "archive-collector",
+            icon: "📚",
+            label: "기록 수집가",
+            description: "기록 5개 이상",
+            unlocked: stats.records + stats.albums >= 5,
+          },
+          {
+            id: "rating-master",
+            icon: "⭐",
+            label: "별점 마스터",
+            description: "별점 기록 3개 이상",
+            unlocked: ratedCount >= 3,
+          },
+          {
+            id: "decoration-starter",
+            icon: "🎨",
+            label: "다꾸 입문자",
+            description: "저장한 다이어리 1개 이상",
+            unlocked: stats.albums >= 1,
+          },
+          {
+            id: "steady-logger",
+            icon: "📝",
+            label: "꾸준한 기록러",
+            description: "기록 10개 이상",
+            unlocked: stats.records + stats.albums >= 10,
+          },
+        ];
+      },
+      setCurrentUser(user) {
+        this.currentUser = user || null;
+        this.currentUserEmail = user?.email || "";
+        this.resetProfileForm();
+        this.loadRepresentativeBadges();
+      },
+      resetProfileForm() {
+        if (this.profilePreviewLocalUrl) {
+          URL.revokeObjectURL(this.profilePreviewLocalUrl);
+        }
+        this.profilePreviewLocalUrl = "";
+        this.profileForm = {
+          nickname: this.currentUser?.nickname || "",
+          profileImage: null,
+          removeProfileImage: false,
+        };
+        this.profileStatus = { type: "", message: "" };
+      },
+      async loadCurrentUser() {
+        try {
+          const user = await this.apiFetch("/api/auth/me/");
+          this.setCurrentUser(user);
+          this.loadSavedCards();
+        } catch (error) {
+          this.setCurrentUser(null);
+        }
+      },
+      handleProfileImageChange(event) {
+        const file = event.target.files?.[0] || null;
+        if (this.profilePreviewLocalUrl) {
+          URL.revokeObjectURL(this.profilePreviewLocalUrl);
+        }
+        this.profilePreviewLocalUrl = file ? URL.createObjectURL(file) : "";
+        this.profileForm.profileImage = file;
+        if (file) {
+          this.profileForm.removeProfileImage = false;
+        }
+        this.profileStatus = { type: "", message: "" };
+      },
+      formatProfileDate(value) {
+        if (!value) return "";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "";
+        return date.toLocaleDateString("ko-KR", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        });
+      },
+      async updateProfile() {
+        const nickname = this.profileForm.nickname.trim();
+        if (!nickname) {
+          this.profileStatus = { type: "error", message: "닉네임을 입력해주세요." };
+          return;
+        }
+
+        this.isProfileSaving = true;
+        this.profileStatus = { type: "", message: "" };
+        try {
+          const csrfToken = await this.getCsrfToken();
+          const formData = new FormData();
+          formData.append("nickname", nickname);
+          formData.append("remove_profile_image", this.profileForm.removeProfileImage ? "true" : "false");
+          if (this.profileForm.profileImage && !this.profileForm.removeProfileImage) {
+            formData.append("profile_image", this.profileForm.profileImage);
+          }
+
+          const response = await fetch("/api/auth/me/update/", {
+            method: "PATCH",
+            credentials: "same-origin",
+            headers: { "X-CSRFToken": csrfToken },
+            body: formData,
+          });
+          if (!response.ok) {
+            let message = `프로필 저장에 실패했습니다. (${response.status})`;
+            try {
+              const errorData = await response.json();
+              message = errorData.detail || Object.values(errorData).flat().join(" ") || message;
+            } catch (error) {
+              // Keep the status-based message when the server does not return JSON.
+            }
+            throw new Error(message);
+          }
+
+          const user = await response.json();
+          this.setCurrentUser(user);
+          this.profileStatus = { type: "success", message: "프로필이 저장되었습니다." };
+        } catch (error) {
+          this.profileStatus = { type: "error", message: error.message || "프로필 저장에 실패했습니다." };
+        } finally {
+          this.isProfileSaving = false;
+        }
+      },
       async submitLogin() {
         this.authError = "";
         const email = this.login.email.trim();
@@ -887,7 +1168,7 @@ window.addEventListener("load", () => {
             method: "POST",
             body: JSON.stringify({ email, password }),
           });
-          this.currentUserEmail = user.email || email;
+          this.setCurrentUser(user);
           this.csrfToken = "";
           this.loadSavedCards();
           await this.loadRecords();
@@ -915,7 +1196,7 @@ window.addEventListener("load", () => {
             method: "POST",
             body: JSON.stringify({ email, nickname, password }),
           });
-          this.currentUserEmail = user.email || email;
+          this.setCurrentUser(user);
           this.csrfToken = "";
           this.loadSavedCards();
           await this.loadRecords();
@@ -940,7 +1221,7 @@ window.addEventListener("load", () => {
         } finally {
           this.isLoggingOut = false;
           this.csrfToken = "";
-          this.currentUserEmail = "";
+          this.setCurrentUser(null);
           this.records = [];
           this.savedCards = [];
           this.login.password = "";

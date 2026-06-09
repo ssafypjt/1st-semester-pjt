@@ -6,10 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>덕꾸 Deokkku</title>
     {{ initial_route|json_script:"initial-route" }}
-    <link rel="stylesheet" href="{% static 'css/app.css' %}?v=share-filter-1" />
+    <link rel="stylesheet" href="{% static 'css/app.css' %}?v=editor-layout-1" />
     <script defer src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <script defer src="{% static 'vendor/html2canvas.min.js' %}?v=1.4.1"></script>
-    <script defer src="{% static 'js/app.js' %}?v=share-filter-1"></script>
+    <script defer src="{% static 'js/app.js' %}?v=editor-layout-1"></script>
   </head>
   <body>
     <div id="app" v-cloak>
@@ -113,10 +113,31 @@
             <div class="top-actions">
               <button class="primary" type="button" @click="openRecordModal">＋ 새 기록</button>
               <button class="icon-btn" type="button">♢</button>
-              <button class="logout-btn" type="button" @click="logout" :disabled="isLoggingOut">
-                [[ isLoggingOut ? '...' : '로그아웃' ]]
-              </button>
-              <button class="avatar" type="button"></button>
+              <div class="profile-menu-wrap" ref="profileMenu">
+                <button class="avatar" type="button" title="Profile" @click.stop="toggleProfileMenu">
+                  <img v-if="currentUser && currentUser.profile_image" :src="currentUser.profile_image" alt="" />
+                </button>
+                <section v-if="showProfileMenu" class="profile-dropdown" role="menu">
+                  <div class="profile-dropdown-head">
+                    <div class="profile-dropdown-avatar">
+                      <img v-if="currentUser && currentUser.profile_image" :src="currentUser.profile_image" alt="" />
+                      <span v-else>[[ profileInitial ]]</span>
+                    </div>
+                    <div>
+                      <b>[[ currentUser?.nickname || '내 프로필' ]]</b>
+                      <p>[[ currentUser?.email || '' ]]</p>
+                      <small>기록 [[ activityStats.records ]]개</small>
+                    </div>
+                  </div>
+                  <div class="profile-dropdown-badges">
+                    <span v-for="badge in featuredBadges" :key="badge.id">[[ badge.icon ]] [[ badge.label ]]</span>
+                  </div>
+                  <div class="profile-dropdown-actions">
+                    <button type="button" @click="navigatePage(nav[4]); closeProfileMenu()">마이페이지 보기</button>
+                    <button type="button" @click="logout">로그아웃</button>
+                  </div>
+                </section>
+              </div>
             </div>
           </header>
 
@@ -155,7 +176,80 @@
                 <p>[[ pageDescription ]]</p>
               </div>
             </header>
-            <div class="detail-grid">
+            <section v-if="activePage === nav[4]" class="mypage-dashboard archive-profile">
+              <article class="profile-hero-card">
+                <div class="profile-avatar-preview">
+                  <img v-if="profilePreviewUrl" :src="profilePreviewUrl" alt="" />
+                  <span v-else>[[ profileInitial ]]</span>
+                </div>
+                <div class="profile-identity">
+                  <small>덕꾸 아카이브</small>
+                  <h3>[[ currentUser?.nickname || '내 프로필' ]]</h3>
+                  <p>[[ currentUser?.email || '' ]]</p>
+                  <span v-if="currentUser?.created_at">가입일 [[ formatProfileDate(currentUser.created_at) ]]</span>
+                </div>
+                <div class="featured-badges">
+                  <span v-for="badge in featuredBadges" :key="badge.id">[[ badge.icon ]] [[ badge.label ]]</span>
+                </div>
+                <button class="profile-edit-toggle" type="button" @click="openProfileModal">프로필 수정</button>
+              </article>
+
+              <section class="profile-stats compact-stats" aria-label="활동 통계">
+                <article v-for="stat in profileStats" :key="stat.label">
+                  <span>[[ stat.icon ]]</span>
+                  <small>[[ stat.label ]]</small>
+                  <b>[[ stat.value ]]</b>
+                </article>
+              </section>
+            </section>
+
+            <section v-if="activePage === nav[4]" class="badge-board">
+              <div class="mypage-section-head">
+                <div>
+                  <h3>대표 뱃지</h3>
+                  <p>내 기록 성향을 보여줄 뱃지를 최대 3개까지 선택하세요.</p>
+                </div>
+              </div>
+              <div class="badge-list">
+                <button
+                  v-for="badge in availableBadges"
+                  :key="badge.id"
+                  type="button"
+                  :class="{ active: selectedBadgeIds.includes(badge.id), locked: !badge.unlocked }"
+                  :disabled="!badge.unlocked"
+                  @click="toggleRepresentativeBadge(badge)"
+                >
+                  <span>[[ badge.icon ]]</span>
+                  <b>[[ badge.label ]]</b>
+                  <small>[[ badge.description ]]</small>
+                </button>
+              </div>
+            </section>
+
+            <section v-if="activePage === nav[4]" class="recent-activity">
+              <div class="mypage-section-head">
+                <div>
+                  <h3>최근 활동</h3>
+                  <p>최근 작성하거나 저장한 덕꾸 기록을 모아봤어요.</p>
+                </div>
+              </div>
+              <div v-if="recentActivities.length" class="activity-list">
+                <article v-for="activity in recentActivities" :key="activity.id">
+                  <span>[[ activity.icon ]]</span>
+                  <div>
+                    <b>[[ activity.title ]]</b>
+                    <p>[[ activity.description ]]</p>
+                  </div>
+                  <small>[[ activity.date ]]</small>
+                </article>
+              </div>
+              <div v-else class="mypage-empty">
+                <b>아직 작성한 기록이 없습니다.</b>
+                <p>첫 감상 다이어리를 만들고 나만의 아카이브를 채워보세요.</p>
+                <button type="button" @click="navigatePage(nav[2])">첫 기록 작성하기</button>
+              </div>
+            </section>
+            <div class="detail-grid" :class="{ 'shortcut-grid': activePage === nav[4] }">
               <article
                 v-for="card in detailCards"
                 :key="card.title"
@@ -167,6 +261,7 @@
                 @keydown.enter.prevent="card.action && navigatePage(card.action)"
                 @keydown.space.prevent="card.action && navigatePage(card.action)"
               >
+                <span v-if="card.icon" class="detail-card-icon">[[ card.icon ]]</span>
                 <b>[[ card.title ]]</b>
                 <p>[[ card.body ]]</p>
               </article>
@@ -238,9 +333,50 @@
               <p>내 앨범에서 저장한 다이어리 카드를 확인할 수 있어요.</p>
               <div>
                 <button type="button" @click="toastMessage = ''">확인</button>
-                <button class="primary" type="button" @click="navigatePage('내 앨범'); toastMessage = ''">내 앨범 보기</button>
+              <button class="primary" type="button" @click="navigatePage('내 앨범'); toastMessage = ''">내 앨범 보기</button>
+            </div>
+          </section>
+          </div>
+
+          <div v-if="isProfileModalOpen" class="profile-modal-backdrop" @click.self="closeProfileModal">
+            <form class="profile-modal" role="dialog" aria-modal="true" aria-label="프로필 수정" @submit.prevent="updateProfile">
+              <header>
+                <div>
+                  <h3>프로필 수정</h3>
+                  <p>닉네임과 프로필 이미지를 변경합니다.</p>
+                </div>
+                <button type="button" @click="closeProfileModal" aria-label="닫기">×</button>
+              </header>
+              <div class="profile-modal-body">
+                <div class="profile-avatar-preview">
+                  <img v-if="profilePreviewUrl" :src="profilePreviewUrl" alt="" />
+                  <span v-else>[[ profileInitial ]]</span>
+                </div>
+                <section class="profile-editor">
+                  <label>
+                    <span>닉네임</span>
+                    <input type="text" v-model.trim="profileForm.nickname" minlength="2" maxlength="20" required />
+                  </label>
+                  <label>
+                    <span>프로필 이미지</span>
+                    <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" @change="handleProfileImageChange" />
+                  </label>
+                  <label class="profile-check">
+                    <input type="checkbox" v-model="profileForm.removeProfileImage" :disabled="!currentUser?.profile_image && !profileForm.profileImage" />
+                    <span>현재 이미지 삭제</span>
+                  </label>
+                </section>
               </div>
-            </section>
+              <p v-if="profileStatus.message" class="profile-status" :class="{ error: profileStatus.type === 'error' }">
+                [[ profileStatus.message ]]
+              </p>
+              <div class="profile-actions">
+                <button type="button" @click="closeProfileModal">취소</button>
+                <button class="primary" type="submit" :disabled="isProfileSaving">
+                  [[ isProfileSaving ? '저장 중...' : '저장하기' ]]
+                </button>
+              </div>
+            </form>
           </div>
 
           <div v-if="isShareModalOpen" class="share-modal" @click.self="closeShareModal">
