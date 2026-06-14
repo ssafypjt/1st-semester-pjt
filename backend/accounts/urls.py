@@ -8,7 +8,10 @@ urlpatterns = [
     path('logout/', views.logout_view, name='logout'),
     path('me/', views.me, name='me'),
     path('me/update/', views.profile_update, name='profile-update'),
+    path('me/delete/', views.account_delete, name='account-delete'),
     path('password/change/', views.password_change, name='password-change'),
+    path('password/reset/', views.password_reset_request, name='password-reset-request'),
+    path('password/reset/confirm/', views.password_reset_confirm, name='password-reset-confirm'),
     # 유저 프로필 공개 조회
     path('users/<int:pk>/', views.user_profile, name='user-profile'),
     # 팔로우 토글

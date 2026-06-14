@@ -49,6 +49,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         null=True,
     )
     created_at = models.DateTimeField('가입일', auto_now_add=True)
+    deleted_at = models.DateTimeField('탈퇴일', null=True, blank=True)
 
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)

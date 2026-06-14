@@ -11,21 +11,22 @@
 import os
 
 from django.conf import settings
+from django.db import IntegrityError
 from django.db.models import Q
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from rest_framework import filters, status, viewsets
-from rest_framework.decorators import (api_view, parser_classes,
+from rest_framework.decorators import (action, api_view, parser_classes,
                                        permission_classes)
 from rest_framework.parsers import FormParser, MultiPartParser
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 
 from accounts.models import Follow
-from .models import Record, RecordImage
+from .models import Comment, Like, Record, RecordImage
 from .permissions import IsOwnerOrReadOnly
-from .serializers import (RecordDetailSerializer, RecordImageSerializer,
-                          RecordListSerializer)
+from .serializers import (CommentSerializer, RecordDetailSerializer,
+                          RecordImageSerializer, RecordListSerializer)
 
 
 class RecordViewSet(viewsets.ModelViewSet):
@@ -42,7 +43,10 @@ class RecordViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = Record.objects.select_related('user', 'work')
+        # 탈퇴(soft delete) 처리된 유저의 기록은 보관 기간(30일) 동안 비공개.
+        # is_active=True 인 유저만 노출 — 재로그인으로 계정이 복구되면
+        # is_active=True 로 돌아가 자동으로 다시 노출된다.
+        qs = Record.objects.select_related('user', 'work').filter(user__is_active=True)
         if user.is_authenticated:
             # 내가 팔로우하는 유저 ID 목록 (friends 공개 범위용)
             following_ids = Follow.objects.filter(
@@ -63,8 +67,64 @@ class RecordViewSet(viewsets.ModelViewSet):
             return RecordListSerializer
         return RecordDetailSerializer
 
+    def get_permissions(self):
+        # 좋아요/댓글 액션은 본인 소유 여부와 무관 — IsOwnerOrReadOnly 대신
+        # 별도 권한 사용. (조회 가능한 기록인지는 get_object()의
+        # get_queryset 필터링이 이미 보장한다.)
+        if self.action == 'like_toggle':
+            return [IsAuthenticated()]
+        if self.action == 'comments':
+            return [IsAuthenticatedOrReadOnly()]
+        return super().get_permissions()
+
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+    # ── 좋아요 ────────────────────────────────────────
+    @action(detail=True, methods=['post'], url_path='like')
+    def like_toggle(self, request, pk=None):
+        """좋아요 토글. POST /api/records/<pk>/like/"""
+        record = self.get_object()
+        like_qs = Like.objects.filter(record=record, user=request.user)
+        if like_qs.exists():
+            like_qs.delete()
+            liked = False
+        else:
+            try:
+                Like.objects.create(record=record, user=request.user)
+            except IntegrityError:
+                # 동시 요청으로 이미 생성된 경우 — 좋아요 상태로 간주
+                pass
+            liked = True
+        like_count = record.likes.count()
+        Record.objects.filter(pk=record.pk).update(like_count=like_count)
+        return Response({'liked': liked, 'like_count': like_count})
+
+    # ── 댓글 (1차 구현) ──────────────────────────────────
+    @action(detail=True, methods=['get', 'post'], url_path='comments')
+    def comments(self, request, pk=None):
+        """댓글 목록 조회 / 작성.
+
+        GET  /api/records/<pk>/comments/  — 조회 가능한 기록의 댓글 전체.
+        POST /api/records/<pk>/comments/  — 로그인 필요, content 필수.
+
+        1차 구현: 페이지네이션·수정/삭제는 후속 작업 (PROJECT_CONTEXT.md 참고).
+        """
+        record = self.get_object()
+        if request.method == 'POST':
+            serializer = CommentSerializer(data=request.data,
+                                           context={'request': request})
+            serializer.is_valid(raise_exception=True)
+            serializer.save(record=record, user=request.user)
+            Record.objects.filter(pk=record.pk).update(
+                comment_count=record.comments.count())
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        # 탈퇴(soft delete) 처리된 유저의 댓글은 보관 기간 동안 비공개.
+        qs = record.comments.select_related('user').filter(user__is_active=True)
+        serializer = CommentSerializer(qs, many=True,
+                                       context={'request': request})
+        return Response(serializer.data)
 
 
 # ── 이미지 업로드 ────────────────────────────────────

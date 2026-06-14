@@ -140,3 +140,64 @@ class FavoriteScene(models.Model):
     class Meta:
         db_table = 'favorite_scene'
         ordering = ['order_index']
+
+
+class Like(models.Model):
+    """기록에 대한 좋아요.
+
+    - (record, user) 유니크: 토글 방식 (있으면 취소, 없으면 생성).
+    - Record.like_count 는 캐시 컬럼이므로 토글 시 view 에서 갱신한다.
+    """
+    record = models.ForeignKey(
+        Record,
+        on_delete=models.CASCADE,
+        related_name='likes',
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='record_likes',
+    )
+    created_at = models.DateTimeField('좋아요 일시', auto_now_add=True)
+
+    class Meta:
+        db_table = 'record_like'
+        unique_together = [('record', 'user')]
+        indexes = [
+            models.Index(fields=['record', '-created_at'], name='like_record_idx'),
+            models.Index(fields=['user', '-created_at'], name='like_user_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.user_id} likes record {self.record_id}'
+
+
+class Comment(models.Model):
+    """기록에 대한 댓글 (1차 구현).
+
+    - 1차: 단일 depth (대댓글 없음), 수정/삭제 권한·페이지네이션 등은
+      후속 작업으로 PROJECT_CONTEXT.md 에 기록.
+    """
+    record = models.ForeignKey(
+        Record,
+        on_delete=models.CASCADE,
+        related_name='comments',
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='record_comments',
+    )
+    content = models.TextField('내용')
+    created_at = models.DateTimeField('작성일', auto_now_add=True)
+    updated_at = models.DateTimeField('수정일', auto_now=True)
+
+    class Meta:
+        db_table = 'record_comment'
+        ordering = ['created_at']
+        indexes = [
+            models.Index(fields=['record', 'created_at'], name='comment_record_idx'),
+        ]
+
+    def __str__(self):
+        return f'Comment<{self.id} on record {self.record_id}>'

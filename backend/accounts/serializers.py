@@ -208,3 +208,23 @@ class PasswordChangeSerializer(serializers.Serializer):
                 {'new_password': '새 비밀번호는 기존 비밀번호와 달라야 합니다.'}
             )
         return attrs
+
+
+# ── 비밀번호 재설정 (이메일 인증) ──────────────────────
+class PasswordResetRequestSerializer(serializers.Serializer):
+    """재설정 메일 발송 요청. 계정 존재 여부와 무관하게 동일 응답을 위해
+    이메일 자체의 형식만 검증한다 (존재 여부는 view에서 조용히 처리)."""
+    email = serializers.EmailField()
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    """재설정 링크의 uid/token + 새 비밀번호 확인.
+
+    new_password 의 validate_password(user=...) 검증은 view에서
+    uid로 조회한 user 컨텍스트와 함께 수행한다 (UserAttributeSimilarityValidator 등이
+    이메일/닉네임 기반 검사를 할 수 있도록 — PasswordChangeSerializer와 동일한 수준).
+    """
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    new_password = serializers.CharField(write_only=True, min_length=8,
+                                          style={'input_type': 'password'})
