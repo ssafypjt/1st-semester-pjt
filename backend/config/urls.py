@@ -103,12 +103,8 @@ class DistFrontendAppView(TemplateView):
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/auth/', include('accounts.urls')),
-<<<<<<< HEAD
     path('api/works/', include('works.urls')),
-=======
     path('api/analyze/', analyze_api, name='analyze-api'),
-    path('api/animes/', include('animes.urls')),
->>>>>>> origin/frontend
     path('api/albums/', include('albums.urls')),
     path('api/records/', include('records.urls')),
     path('', RedirectView.as_view(url='/deokkku/login/', permanent=False), name='home'),
