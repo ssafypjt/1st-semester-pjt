@@ -11,6 +11,7 @@
 import os
 
 from django.conf import settings
+from django.db.models import Q
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from rest_framework import filters, status, viewsets
@@ -20,6 +21,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from accounts.models import Follow
 from .models import Record, RecordImage
 from .permissions import IsOwnerOrReadOnly
 from .serializers import (RecordDetailSerializer, RecordImageSerializer,
@@ -42,10 +44,16 @@ class RecordViewSet(viewsets.ModelViewSet):
         user = self.request.user
         qs = Record.objects.select_related('user', 'work')
         if user.is_authenticated:
-            # 본인 기록은 draft 포함 전체, 타인 기록은 공개+게시 완료만
+            # 내가 팔로우하는 유저 ID 목록 (friends 공개 범위용)
+            following_ids = Follow.objects.filter(
+                follower=user
+            ).values_list('following_id', flat=True)
+            # 본인 기록은 draft 포함 전체
+            # 타인 기록은 public+게시 완료 또는 (friends+게시 완료 AND 팔로우 중)
             return qs.filter(
                 Q(user=user) |
-                Q(visibility='public', status='published')
+                Q(visibility='public', status='published') |
+                Q(visibility='friends', status='published', user_id__in=following_ids)
             )
         # 비로그인: 공개+게시 완료만
         return qs.filter(visibility='public', status='published')

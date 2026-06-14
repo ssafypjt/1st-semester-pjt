@@ -123,8 +123,9 @@ STATIC_URL = '/static/'
 _vite_dist = FRONTEND_DIR / 'dist'
 STATICFILES_DIRS = [
     FRONTEND_DIR / 'static',
-    _vite_dist,
 ]
+if _vite_dist.exists():
+    STATICFILES_DIRS.append(_vite_dist)
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
@@ -174,7 +175,7 @@ if not DEBUG:
     SESSION_COOKIE_SECURE = env('SESSION_COOKIE_SECURE')
     CSRF_COOKIE_SECURE = env('CSRF_COOKIE_SECURE')
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-    SECURE_HSTS_SECONDS = 60 
+    SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     X_FRAME_OPTIONS = 'DENY'
