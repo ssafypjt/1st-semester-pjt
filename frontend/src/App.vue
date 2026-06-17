@@ -64,9 +64,6 @@
                     <small>기록 {{ activityStats.records }}개</small>
                   </div>
                 </div>
-                <div class="profile-dropdown-badges">
-                  <span v-for="badge in featuredBadges" :key="badge.id">{{ badge.icon }} {{ badge.label }}</span>
-                </div>
                 <div class="profile-dropdown-actions">
                   <button type="button" @click="navigatePage(nav[4]); closeProfileMenu()">마이페이지 보기</button>
                   <button type="button" @click="logout">로그아웃</button>
@@ -271,14 +268,20 @@
                 <p>{{ currentUser?.email || '' }}</p>
                 <span v-if="currentUser?.created_at">가입일 {{ formatProfileDate(currentUser.created_at) }}</span>
               </div>
-              <div class="featured-badges">
-                <span v-for="badge in featuredBadges" :key="badge.id">{{ badge.icon }} {{ badge.label }}</span>
-              </div>
               <button class="profile-edit-toggle" type="button" @click="openProfileModal">프로필 수정</button>
             </article>
 
             <section class="profile-stats compact-stats" aria-label="활동 통계">
-              <article v-for="stat in profileStats" :key="stat.label">
+              <article
+                v-for="stat in profileStats"
+                :key="stat.label"
+                :class="{ clickable: stat.action }"
+                :role="stat.action ? 'button' : null"
+                :tabindex="stat.action ? 0 : null"
+                @click="stat.action === 'badges' && openBadgeModal()"
+                @keydown.enter.prevent="stat.action === 'badges' && openBadgeModal()"
+                @keydown.space.prevent="stat.action === 'badges' && openBadgeModal()"
+              >
                 <span>{{ stat.icon }}</span>
                 <small>{{ stat.label }}</small>
                 <b>{{ stat.value }}</b>
@@ -286,53 +289,7 @@
             </section>
           </section>
 
-          <section v-if="activePage === nav[4]" class="badge-board">
-            <div class="mypage-section-head">
-              <div>
-                <h3>대표 뱃지</h3>
-                <p>내 기록 성향을 보여줄 뱃지를 최대 3개까지 선택하세요.</p>
-              </div>
-            </div>
-            <div class="badge-list">
-              <button
-                v-for="badge in availableBadges"
-                :key="badge.id"
-                type="button"
-                :class="{ active: selectedBadgeIds.includes(badge.id), locked: !badge.unlocked }"
-                :disabled="!badge.unlocked"
-                @click="toggleRepresentativeBadge(badge)"
-              >
-                <span>{{ badge.icon }}</span>
-                <b>{{ badge.label }}</b>
-                <small>{{ badge.description }}</small>
-              </button>
-            </div>
-          </section>
-
-          <section v-if="activePage === nav[4]" class="recent-activity">
-            <div class="mypage-section-head">
-              <div>
-                <h3>최근 활동</h3>
-                <p>최근 작성하거나 저장한 덕꾸 기록을 모아봤어요.</p>
-              </div>
-            </div>
-            <div v-if="recentActivities.length" class="activity-list">
-              <article v-for="activity in recentActivities" :key="activity.id">
-                <span>{{ activity.icon }}</span>
-                <div>
-                  <b>{{ activity.title }}</b>
-                  <p>{{ activity.description }}</p>
-                </div>
-                <small>{{ activity.date }}</small>
-              </article>
-            </div>
-            <div v-else class="mypage-empty">
-              <b>아직 작성한 기록이 없습니다.</b>
-              <p>첫 감상 다이어리를 만들고 나만의 아카이브를 채워보세요.</p>
-              <button type="button" @click="navigatePage(nav[2])">첫 기록 작성하기</button>
-            </div>
-          </section>
-          <div class="detail-grid" :class="{ 'shortcut-grid': activePage === nav[4] }">
+          <div v-if="activePage !== nav[4]" class="detail-grid">
             <article
               v-for="card in detailCards"
               :key="card.title"
@@ -455,6 +412,37 @@
             </div>
           </form>
         </div>
+
+        <div v-if="isBadgeModalOpen" class="profile-modal-backdrop badge-modal-backdrop" @click.self="closeBadgeModal">
+          <section class="badge-modal" role="dialog" aria-modal="true" aria-label="대표 뱃지 설정">
+            <header>
+              <div>
+                <h3>대표 뱃지 설정</h3>
+                <p>프로필에 보여줄 뱃지를 최대 3개까지 선택하세요.</p>
+              </div>
+              <button type="button" @click="closeBadgeModal" aria-label="닫기">×</button>
+            </header>
+            <div class="badge-list badge-modal-list">
+              <button
+                v-for="badge in availableBadges"
+                :key="badge.id"
+                type="button"
+                :class="{ active: selectedBadgeIds.includes(badge.id), locked: !badge.unlocked }"
+                :disabled="!badge.unlocked"
+                @click="toggleRepresentativeBadge(badge)"
+              >
+                <span>{{ badge.icon }}</span>
+                <b>{{ badge.label }}</b>
+                <small>{{ badge.description }}</small>
+                <em>{{ selectedBadgeIds.includes(badge.id) ? '대표 표시 중' : (badge.unlocked ? '선택 가능' : '미획득') }}</em>
+              </button>
+            </div>
+            <footer>
+              <small>{{ selectedBadgeIds.length }} / 3 선택됨</small>
+              <button class="primary" type="button" @click="closeBadgeModal">완료</button>
+            </footer>
+          </section>
+        </div>
       </main>
     </section>
   </div>
@@ -506,6 +494,7 @@ export default {
       isProfileSaving: false,
       showProfileMenu: false,
       isProfileModalOpen: false,
+      isBadgeModalOpen: false,
       csrfToken: "",
       profileForm: {
         nickname: "",
@@ -581,11 +570,12 @@ export default {
     },
     profileStats() {
       const stats = this.activityStats;
+      const unlockedBadges = this.availableBadges.filter((badge) => badge.unlocked).length;
       return [
-        { icon: "✏", label: "작성한 기록", value: stats.records },
+        { icon: "🏅", label: "수집한 뱃지", value: unlockedBadges, action: "badges" },
         { icon: "▣", label: "내 앨범", value: stats.albums },
         { icon: "↗", label: "공유 카드", value: stats.shares },
-        { icon: "•", label: "최근 활동", value: stats.recent },
+        { icon: "⭐", label: "대표 뱃지", value: this.featuredBadges.length },
       ];
     },
     availableBadges() {
@@ -593,13 +583,10 @@ export default {
     },
     featuredBadges() {
       const unlocked = this.availableBadges.filter((badge) => badge.unlocked);
-      if (!unlocked.length) {
-        return [{ id: "starter", icon: "✨", label: "아카이브 준비중" }];
-      }
       const selected = this.selectedBadgeIds
         .map((id) => unlocked.find((badge) => badge.id === id))
         .filter(Boolean);
-      return (selected.length ? selected : unlocked).slice(0, 3);
+      return selected.slice(0, 3);
     },
     recentActivities() {
       return (this.savedCards || []).slice(0, 5).map((card) => ({
@@ -713,6 +700,9 @@ export default {
       if (this.isProfileModalOpen) {
         this.closeProfileModal();
       }
+      if (this.isBadgeModalOpen) {
+        this.closeBadgeModal();
+      }
     },
     openProfileModal() {
       this.resetProfileForm();
@@ -721,6 +711,12 @@ export default {
     closeProfileModal() {
       this.isProfileModalOpen = false;
       this.resetProfileForm();
+    },
+    openBadgeModal() {
+      this.isBadgeModalOpen = true;
+    },
+    closeBadgeModal() {
+      this.isBadgeModalOpen = false;
     },
     badgeStorageKey() {
       return `deokkkuRepresentativeBadges:${this.currentUser?.email || "guest"}`;

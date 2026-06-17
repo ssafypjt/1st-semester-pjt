@@ -513,6 +513,7 @@ window.addEventListener("load", () => {
         isProfileSaving: false,
         showProfileMenu: false,
         isProfileModalOpen: false,
+        isBadgeModalOpen: false,
         profileForm: {
           nickname: "",
           profileImage: null,
@@ -682,11 +683,12 @@ window.addEventListener("load", () => {
       },
       profileStats() {
         const stats = this.activityStats;
+        const unlockedBadges = this.availableBadges.filter((badge) => badge.unlocked).length;
         return [
-          { icon: "✏", label: "작성한 기록", value: stats.records },
+          { icon: "🏅", label: "수집한 뱃지", value: unlockedBadges, action: "badges" },
           { icon: "▣", label: "내 앨범", value: stats.albums },
           { icon: "↗", label: "공유 카드", value: stats.shares },
-          { icon: "•", label: "최근 활동", value: stats.recent },
+          { icon: "⭐", label: "대표 뱃지", value: this.featuredBadges.length },
         ];
       },
       availableBadges() {
@@ -694,13 +696,10 @@ window.addEventListener("load", () => {
       },
       featuredBadges() {
         const unlocked = this.availableBadges.filter((badge) => badge.unlocked);
-        if (!unlocked.length) {
-          return [{ id: "starter", icon: "✨", label: "아카이브 준비중" }];
-        }
         const selected = this.selectedBadgeIds
           .map((id) => unlocked.find((badge) => badge.id === id))
           .filter(Boolean);
-        return (selected.length ? selected : unlocked).slice(0, 3);
+        return selected.slice(0, 3);
       },
       recentActivities() {
         const saved = (this.savedCards || []).slice(0, 4).map((card) => ({
@@ -967,6 +966,9 @@ window.addEventListener("load", () => {
         if (this.isProfileModalOpen) {
           this.closeProfileModal();
         }
+        if (this.isBadgeModalOpen) {
+          this.closeBadgeModal();
+        }
       },
       openProfileModal() {
         this.resetProfileForm();
@@ -975,6 +977,12 @@ window.addEventListener("load", () => {
       closeProfileModal() {
         this.isProfileModalOpen = false;
         this.resetProfileForm();
+      },
+      openBadgeModal() {
+        this.isBadgeModalOpen = true;
+      },
+      closeBadgeModal() {
+        this.isBadgeModalOpen = false;
       },
       badgeStorageKey() {
         return `deokkkuRepresentativeBadges:${this.currentUser?.email || this.currentUserEmail || "guest"}`;
