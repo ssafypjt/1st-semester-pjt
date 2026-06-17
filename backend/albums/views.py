@@ -5,6 +5,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 
+from accounts.models import Follow
 from records.models import Record
 from .models import Album, AlbumRecord
 from .serializers import AlbumSerializer, AlbumRecordSerializer
@@ -21,16 +22,23 @@ class AlbumViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticatedOrReadOnly]
 
     def get_queryset(self):
-        """본인 앨범 전체 + 타인의 public 앨범.
+        """본인 앨범 전체 + 팔로우 중인 유저의 friends 앨범 + 모든 유저의 public 앨범.
 
-        - friends 앨범은 2단계 팔로우 기능 구현 전까지 본인에게만 노출된다.
-          (visibility='friends'는 public 조건에 포함되지 않으므로 자연스럽게 필터링됨)
+        - 팔로우 구현 후 friends 공개 범위 활성화.
         - annotate로 record_count를 미리 집계해 N+1 쿼리를 방지한다.
         """
         qs = Album.objects.annotate(record_count=Count('records'))
         user = self.request.user
         if user.is_authenticated:
-            return qs.filter(Q(user=user) | Q(visibility='public'))
+            # 내가 팔로우하는 유저 ID 목록
+            following_ids = Follow.objects.filter(
+                follower=user
+            ).values_list('following_id', flat=True)
+            return qs.filter(
+                Q(user=user) |
+                Q(visibility='public') |
+                Q(visibility='friends', user_id__in=following_ids)
+            )
         return qs.filter(visibility='public')
 
     def perform_create(self, serializer):
