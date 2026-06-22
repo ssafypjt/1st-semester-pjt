@@ -14,6 +14,7 @@ query ($search: String) {
     media(search: $search, type: ANIME) {
       id
       title { romaji english native }
+      synonyms
       startDate { year month day }
       genres
       description(asHtml: false)
@@ -62,4 +63,4 @@ def search(query):
             poster_image=(media.get('coverImage') or {}).get('large', ''),
             description=media.get('description') or '',
         ))
-    return results
+    

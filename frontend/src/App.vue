@@ -328,6 +328,7 @@
           v-model:record-form="recordForm"
           :mode="recordModalMode"
           :stars="stars"
+          :api-fetch="apiFetch"
           @close="closeRecordModal"
           @submit="createBlankRecord"
         />
@@ -484,6 +485,7 @@ export default {
         title: "",
         date: new Date().toISOString().slice(0, 10),
         rating: 0,
+        workId: null,
       },
       recordModalMode: "create",
       savedCards: [],
@@ -1284,6 +1286,7 @@ export default {
         title: mode === "edit" ? this.currentRecord.title : "",
         date: mode === "edit" ? this.formatInputDate(this.currentRecord.date) : new Date().toISOString().slice(0, 10),
         rating: mode === "edit" ? this.currentRecord.rating : 0,
+        workId: mode === "edit" ? (this.currentRecord.workId || null) : null,
       };
       this.isRecordModalOpen = true;
     },
@@ -1333,6 +1336,7 @@ export default {
         title,
         date: watchedDate,
         rating: record.rating ?? 0,
+        workId: record.work?.id || record.work || null,
         visibility: record.visibility || "private",
         memoCount: placedItems.filter((i) => i.type === "text").length,
         stickerCount: placedItems.filter((i) => i.type !== "text").length,
@@ -1389,7 +1393,7 @@ export default {
       try {
         const recordTitle = (this.currentRecord.title || this.recordForm.title || "").trim() || "제목 없는 기록";
         const payload = {
-          work_title: recordTitle,
+          ...(this.recordForm.workId ? { work_id: this.recordForm.workId } : { work_title: recordTitle }),
           anime_title: recordTitle,
           rating: this.currentRecord.rating ?? null,
           watched_date: this.formatInputDate(this.currentRecord.date) || null,
@@ -1679,9 +1683,4 @@ export default {
         this._clearAutosave();
       } catch (e) {
         console.warn("임시저장 복원 실패:", e);
-        this._clearAutosave();
-      }
-    },
-  },
-};
-</script>
+        
