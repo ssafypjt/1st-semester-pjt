@@ -114,6 +114,10 @@
                 <button class="tool-action memo-action" type="button" title="메모 추가" @click="addTextMemo">
                   <span>T</span><b>메모 추가</b>
                 </button>
+                <div class="visibility-selector">
+                  <button type="button" class="vis-btn" :class="{ active: recordVisibility === 'private' }" title="나만 보기" @click="recordVisibility = 'private'">🔒 나만</button>
+                  <button type="button" class="vis-btn" :class="{ active: recordVisibility === 'public' }" title="전체 공개" @click="recordVisibility = 'public'">🌐 공개</button>
+                </div>
                 <button class="primary small tool-action save-action" type="button" title="저장" @click="saveCard">
                   <span class="save-icon"></span><b>저장</b>
                 </button>
@@ -276,6 +280,35 @@
               <p>{{ card.body }}</p>
             </article>
           </div>
+          <!-- 홈 피드: public 게시글 -->
+          <div v-if="activePage === '홈'" class="home-feed">
+            <p v-if="isFeedLoading" class="feed-empty">불러오는 중...</p>
+            <p v-else-if="feedRecords.length === 0" class="feed-empty">아직 공유된 기록이 없습니다.</p>
+            <article v-for="rec in feedRecords" :key="rec.id" class="feed-card">
+              <header class="feed-card-header">
+                <div class="feed-user">
+                  <span class="feed-avatar">{{ (rec.user_nickname || '?')[0] }}</span>
+                  <b>{{ rec.user_nickname }}</b>
+                </div>
+                <time>{{ formatFeedDate(rec.created_at) }}</time>
+              </header>
+              <div class="feed-card-body">
+                <img v-if="rec.work_poster" class="feed-poster" :src="rec.work_poster" :alt="rec.work_title" />
+                <div class="feed-info">
+                  <h3>{{ rec.title || rec.work_title || '제목 없음' }}</h3>
+                  <p v-if="rec.work_title" class="feed-work">{{ rec.work_title }}</p>
+                  <span v-if="rec.rating" class="feed-rating">{{ stars(rec.rating) }} {{ rec.rating }}</span>
+                  <p v-if="rec.content" class="feed-content">{{ rec.content.length > 120 ? rec.content.slice(0, 120) + '…' : rec.content }}</p>
+                </div>
+              </div>
+              <footer class="feed-card-footer">
+                <button type="button" class="feed-action" :class="{ liked: rec.is_liked }" @click="toggleFeedLike(rec)">{{ rec.is_liked ? '♥' : '♡' }} {{ rec.like_count || 0 }}</button>
+                <button type="button" class="feed-action">💬 {{ rec.comment_count || 0 }}</button>
+                <button v-if="rec.is_mine" type="button" class="feed-action feed-edit" @click="openFeedRecord(rec)">✎ 편집</button>
+              </footer>
+            </article>
+          </div>
+
           <saved-album-grid
             v-if="activePage === '내 앨범'"
             :saved-cards="savedCards"
@@ -454,6 +487,9 @@ export default {
       },
       recordModalMode: "create",
       savedCards: [],
+      feedRecords: [],
+      isFeedLoading: false,
+      recordVisibility: "private",
       undoHistory: [],
       layerZIndex: 0,
       lastSaveAt: 0,
@@ -502,7 +538,39 @@ export default {
         mode: 'login',  // 'login' | 'signup'
       },
 
-      // ── 공유 카드 ──
+      // ── 피드 좋아요 토글 ──
+    async toggleFeedLike(record) {
+      if (!this.currentUser) return;
+      try {
+        const data = await this.apiFetch(`/api/records/${record.id}/like/`, { method: "POST" });
+        record.is_liked = data.liked;
+        record.like_count = data.like_count;
+      } catch (error) {
+        console.error("좋아요 실패:", error);
+      }
+    },
+
+    openFeedRecord(record) {
+      const card = this.apiRecordToSavedCard(record);
+      this.openSavedCard(card);
+    },
+
+    formatFeedDate(dateStr) {
+      if (!dateStr) return "";
+      const d = new Date(dateStr);
+      const now = new Date();
+      const diff = now - d;
+      const mins = Math.floor(diff / 60000);
+      if (mins < 1) return "방금 전";
+      if (mins < 60) return `${mins}분 전`;
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) return `${hours}시간 전`;
+      const days = Math.floor(hours / 24);
+      if (days < 7) return `${days}일 전`;
+      return d.toLocaleDateString("ko-KR");
+    },
+
+    // ── 공유 카드 ──
       isShareModalOpen: false,   // 공유 모달 열림
       shareCards: [],            // 생성된 공유 카드 목록
       isGeneratingCard: false,   // AI 카드 생성 중
@@ -581,7 +649,7 @@ export default {
     },
     pageDescription() {
       const descriptions = {
-        홈: "최근 감상 기록과 다이어리 꾸미기를 한눈에 확인합니다.",
+        홈: "다른 사람들의 감상 기록을 둘러보세요.",
         "내 앨범": "저장한 다이어리 카드를 모아보는 공간입니다.",
         리뷰: "작품별 감상과 별점을 정리합니다.",
         마이페이지: "내 취향과 활동 기록을 확인합니다.",
@@ -629,6 +697,7 @@ export default {
 
     this.loadRepresentativeBadges();
     this.checkAuth();
+    this.loadFeedRecords();
     this.loadSavedCards().then(() => {
       this._checkAutosaveRestore();
       this.$nextTick(() => { this._dirty = false; });
@@ -969,11 +1038,11 @@ export default {
         width: item.width ? `${item.width}px` : null,
         height: item.height ? `${item.height}px` : null,
         zIndex: item.zIndex || 1,
-        "--item-scale": item.type === "text" ? 1 : item.scale || 1,
+        "--item-scale": (item.type === "text" || item.type === "image") ? 1 : item.scale || 1,
       };
     },
     stickerStyle(item) {
-      const scale = item.type === "text" ? 1 : item.scale || 1;
+      const scale = (item.type === "text" || item.type === "image") ? 1 : item.scale || 1;
       return {
         transform: `rotate(${item.rotate || 0}deg) scale(${scale})`,
       };
@@ -1093,12 +1162,14 @@ export default {
         const nextId = Date.now();
         const nextItem = {
           id: nextId,
+          type: "image",
           icon: "",
           imageSrc: data.url,  // 백엔드 protected URL
           tone: "custom-image",
           x: 31 + (this.placedItems.length * 7) % 38,
           y: 24 + (this.placedItems.length * 9) % 44,
-          rotate: -6 + (this.placedItems.length * 5) % 14,
+          width: 200,
+          rotate: 0,
           scale: 1,
           zIndex: this.nextLayerZIndex(),
         };
@@ -1138,22 +1209,24 @@ export default {
     startResize(event, item) {
       event.preventDefault();
       this.selectDecoration(item.id);
-      this.resizing = item.type === "text"
-        ? {
-            item,
-            mode: "box",
-            startX: event.clientX,
-            startY: event.clientY,
-            startWidth: item.width || 190,
-            startHeight: item.height || 150,
-          }
-        : {
-            item,
-            mode: "scale",
-            startX: event.clientX,
-            startY: event.clientY,
-            startScale: item.scale || 1,
-          };
+      if (item.type === "text") {
+        this.resizing = {
+          item, mode: "box",
+          startX: event.clientX, startY: event.clientY,
+          startWidth: item.width || 190, startHeight: item.height || 150,
+        };
+      } else if (item.type === "image") {
+        this.resizing = {
+          item, mode: "image-width",
+          startX: event.clientX, startWidth: item.width || 200,
+        };
+      } else {
+        this.resizing = {
+          item, mode: "scale",
+          startX: event.clientX, startY: event.clientY,
+          startScale: item.scale || 1,
+        };
+      }
     },
     startRotate(event, item) {
       event.preventDefault();
@@ -1186,6 +1259,8 @@ export default {
         if (mode === "box") {
           item.width = this.clamp(this.resizing.startWidth + event.clientX - startX, 120, 440);
           item.height = this.clamp(this.resizing.startHeight + event.clientY - startY, 100, 380);
+        } else if (mode === "image-width") {
+          item.width = this.clamp(this.resizing.startWidth + event.clientX - startX, 60, 500);
         } else {
           const delta = Math.max(event.clientX - startX, event.clientY - startY);
           item.scale = this.clamp(this.resizing.startScale + delta / 140, 0.45, 2.8);
@@ -1234,6 +1309,7 @@ export default {
       if (this.recordModalMode !== "edit") {
         // 신규 기록이면 백엔드 ID 초기화 (저장 시 POST)
         this.currentRecordId = null;
+        this.recordVisibility = "private";
         this.placedItems = [];
         this.mainImageSrc = "";
         this.selectedDecorationId = null;
@@ -1257,6 +1333,7 @@ export default {
         title,
         date: watchedDate,
         rating: record.rating ?? 0,
+        visibility: record.visibility || "private",
         memoCount: placedItems.filter((i) => i.type === "text").length,
         stickerCount: placedItems.filter((i) => i.type !== "text").length,
         savedAt: record.created_at,
@@ -1287,6 +1364,21 @@ export default {
       }
     },
 
+    // ── 홈 피드: public 게시글 불러오기 ──
+    async loadFeedRecords() {
+      this.isFeedLoading = true;
+      try {
+        const data = await this.apiFetch("/api/records/");
+        const results = Array.isArray(data) ? data : (data.results || []);
+        this.feedRecords = results;
+      } catch (error) {
+        console.error("피드 불러오기 실패:", error);
+        this.feedRecords = [];
+      } finally {
+        this.isFeedLoading = false;
+      }
+    },
+
     // ── 저장 (신규: POST / 수정: PATCH) ──────────────────────────────────
     async saveCard() {
       const now = Date.now();
@@ -1309,7 +1401,7 @@ export default {
             analysis: this.cloneForSave(this.ai),
           },
           status: "published",
-          visibility: "private",
+          visibility: this.recordVisibility,
         };
 
         let record;
@@ -1336,6 +1428,7 @@ export default {
         this.toastMessage = "저장되었습니다";
         this._dirty = false;
         this._clearAutosave();
+        this.loadFeedRecords();
       } catch (error) {
         console.error("저장 실패:", error);
         this.toastMessage = "저장에 실패했습니다. 다시 시도해주세요.";
@@ -1359,6 +1452,7 @@ export default {
       this.mainImageSrc = card.snapshot?.mainImageSrc || "";
       this.selectedDecorationId = null;
       this.currentRecordId = card.id;  // 수정 모드 — 저장 시 PATCH
+      this.recordVisibility = card.visibility || "private";
       this.activePage = "기록 작성";
       this.toastMessage = "";
       this.undoHistory = [];
@@ -1502,6 +1596,7 @@ export default {
         this.loadRepresentativeBadges();
         this.loadUserStickers();
         this.loadSavedCards();
+        this.loadFeedRecords();
         this.loginForm = { email: '', password: '', nickname: '', error: '', loading: false, mode: 'login' };
       } catch (error) {
         this.loginForm.error = error.message || '회원가입에 실패했습니다.';
@@ -1525,6 +1620,7 @@ export default {
         this.loadRepresentativeBadges();
         this.loadUserStickers();
         this.loadSavedCards();
+        this.loadFeedRecords();
         this.loginForm = { email: '', password: '', error: '', loading: false, mode: 'login' };
       } catch (error) {
         this.loginForm.error = '이메일 또는 비밀번호가 올바르지 않습니다.';
