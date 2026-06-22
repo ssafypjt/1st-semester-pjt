@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Decoration, FavoriteScene, Record, RecordImage
+from .models import Comment, Decoration, FavoriteScene, Like, Record, RecordImage
 
 
 class DecorationInline(admin.TabularInline):
@@ -39,3 +39,16 @@ class RecordImageAdmin(admin.ModelAdmin):
     list_filter = ('created_at',)
     search_fields = ('uploader__email', 'uploader__nickname', 'original_name')
     readonly_fields = ('size', 'original_name', 'created_at')
+
+
+@admin.register(Like)
+class LikeAdmin(admin.ModelAdmin):
+    list_display = ('id', 'record', 'user', 'created_at')
+    search_fields = ('user__nickname', 'user__email')
+
+
+@admin.register(Comment)
+class CommentAdmin(admin.ModelAdmin):
+    list_display = ('id', 'record', 'user', 'created_at')
+    list_filter = ('created_at',)
+    search_fields = ('user__nickname', 'content')

@@ -10,6 +10,10 @@
         <h3>{{ currentUser?.nickname || '내 프로필' }}</h3>
         <p>{{ currentUser?.email || '' }}</p>
         <span v-if="joinedDate">가입일 {{ joinedDate }}</span>
+        <div class="featured-badges">
+          <span v-for="badge in featuredBadges" :key="badge.id">{{ badge.icon }} {{ badge.label }}</span>
+          <small v-if="featuredBadges.length === 0">대표 뱃지를 선택해보세요</small>
+        </div>
       </div>
       <button class="profile-edit-toggle" type="button" @click="$emit('edit-profile')">프로필 수정</button>
     </article>
@@ -44,6 +48,10 @@ export default {
       required: true,
     },
     profileStats: {
+      type: Array,
+      required: true,
+    },
+    featuredBadges: {
       type: Array,
       required: true,
     },

@@ -26,6 +26,8 @@ env = environ.Env(
     SESSION_COOKIE_SECURE=(bool, False),
     CSRF_COOKIE_SECURE=(bool, False),
     MEDIA_MAX_UPLOAD_MB=(int, 8),
+    EMAIL_PORT=(int, 25),
+    EMAIL_USE_TLS=(bool, True),
 )
 env_file = BASE_DIR / '.env'
 if env_file.exists():
@@ -124,14 +126,42 @@ STATIC_URL = '/static/'
 _vite_dist = FRONTEND_DIR / 'dist'
 STATICFILES_DIRS = [
     FRONTEND_DIR / 'static',
-    _vite_dist,
 ]
+if _vite_dist.exists():
+    STATICFILES_DIRS.append(_vite_dist)
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 MEDIA_MAX_UPLOAD_BYTES = env('MEDIA_MAX_UPLOAD_MB') * 1024 * 1024
+
+# ── 이메일 (비밀번호 재설정 등) ─────────────────────
+# 개발 기본값: 콘솔에 출력 (runserver 로그에서 메일 내용 확인 가능).
+# 운영에서는 .env 에 SMTP 정보를 채워 EMAIL_BACKEND 를 smtp 로 전환.
+EMAIL_BACKEND = env(
+    'EMAIL_BACKEND',
+    default='django.core.mail.backends.console.EmailBackend',
+)
+EMAIL_HOST = env('EMAIL_HOST', default='localhost')
+EMAIL_PORT = env('EMAIL_PORT')
+EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
+EMAIL_USE_TLS = env('EMAIL_USE_TLS')
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='no-reply@deokkku.local')
+
+# 비밀번호 재설정 링크 생성 시 사용할 프론트엔드 베이스 URL.
+FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:5173')
+
+# ── 외부 작품 메타데이터 API (2단계 스캐폴딩) ────────
+# 현재는 키/엔드포인트 설정과 works/services/ 의 클라이언트 모듈만 준비됨.
+# 검색 API, Work.get_or_create 동기화 등은 후속 작업 (PROJECT_CONTEXT.md 참고).
+ANILIST_API_URL = env('ANILIST_API_URL', default='https://graphql.anilist.co')
+TMDB_API_KEY = env('TMDB_API_KEY', default='')
+TMDB_API_BASE_URL = env('TMDB_API_BASE_URL', default='https://api.themoviedb.org/3')
+GOOGLE_BOOKS_API_KEY = env('GOOGLE_BOOKS_API_KEY', default='')
+GOOGLE_BOOKS_API_BASE_URL = env(
+    'GOOGLE_BOOKS_API_BASE_URL', default='https://www.googleapis.com/books/v1')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -150,6 +180,11 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
+    # 비밀번호 재설정 — 메일 폭탄 / 토큰 추측 시도 방지 (IP 기준).
+    'DEFAULT_THROTTLE_RATES': {
+        'password_reset_request': '5/hour',
+        'password_reset_confirm': '10/hour',
+    },
 }
 
 # ── CORS / CSRF ────────────────────────────────────
@@ -180,7 +215,7 @@ if not DEBUG:
     SESSION_COOKIE_SECURE = env('SESSION_COOKIE_SECURE')
     CSRF_COOKIE_SECURE = env('CSRF_COOKIE_SECURE')
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-    SECURE_HSTS_SECONDS = 60 
+    SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     X_FRAME_OPTIONS = 'DENY'

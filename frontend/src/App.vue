@@ -190,6 +190,7 @@
             :profile-initial="profileInitial"
             :joined-date="currentUser?.created_at ? formatProfileDate(currentUser.created_at) : ''"
             :profile-stats="profileStats"
+            :featured-badges="featuredBadges"
             @edit-profile="openProfileModal"
             @open-badges="openBadgeModal"
           />
@@ -462,12 +463,10 @@ export default {
       }
     },
     loginRedirectUrl() {
-      const { hostname, port } = window.location;
-      if (hostname === "localhost" && ["5173", "5174"].includes(port)) {
-        return "http://localhost:8000/deokkku/login/";
-      }
-      if (hostname === "127.0.0.1" && ["5173", "5174"].includes(port)) {
-        return "http://127.0.0.1:8000/deokkku/login/";
+      const { protocol, hostname, port } = window.location;
+      const isViteDevServer = ["5173", "5174"].includes(port);
+      if (isViteDevServer) {
+        return `${protocol}//${hostname}:8000/deokkku/login/`;
       }
       return "/deokkku/login/";
     },
@@ -724,7 +723,7 @@ export default {
           method: "POST",
           body: JSON.stringify({}),
         });
-        window.location.href = "/deokkku/login/";
+        window.location.href = this.loginRedirectUrl();
       } catch (error) {
         console.error(error);
       } finally {

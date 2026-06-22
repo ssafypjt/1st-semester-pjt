@@ -49,6 +49,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         null=True,
     )
     created_at = models.DateTimeField('가입일', auto_now_add=True)
+    deleted_at = models.DateTimeField('탈퇴일', null=True, blank=True)
 
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
@@ -63,6 +64,46 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return f'{self.nickname} ({self.email})'
+
+
+class Follow(models.Model):
+    """팔로우 관계.
+
+    - follower: 팔로우를 거는 쪽
+    - following: 팔로우를 받는 쪽
+    - 자기 자신 팔로우는 CheckConstraint로 DB 레벨에서 차단
+    """
+
+    follower = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='following_set',
+        verbose_name='팔로워',
+    )
+    following = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='follower_set',
+        verbose_name='팔로잉',
+    )
+    created_at = models.DateTimeField('팔로우 일시', auto_now_add=True)
+
+    class Meta:
+        db_table = 'follow'
+        unique_together = [('follower', 'following')]
+        constraints = [
+            models.CheckConstraint(
+                check=~models.Q(follower=models.F('following')),
+                name='follow_no_self_follow',
+            )
+        ]
+        indexes = [
+            models.Index(fields=['follower', '-created_at'], name='follow_follower_idx'),
+            models.Index(fields=['following', '-created_at'], name='follow_following_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.follower.nickname} → {self.following.nickname}'
 
 
 class SocialAccount(models.Model):
