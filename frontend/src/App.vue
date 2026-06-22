@@ -153,49 +153,15 @@
           </section>
 
           <aside class="right-rail">
-            <section class="panel-card">
-              <header>
-                <h3>스티커샵</h3>
-                <span>클릭해서 붙이기</span>
-              </header>
-              <div class="subtabs">
-                <button
-                  v-for="category in stickerCategories"
-                  :key="category"
-                  :class="{ active: activeStickerCategory === category }"
-                  type="button"
-                  @click="activeStickerCategory = category"
-                >
-                  {{ category }}
-                </button>
-              </div>
-              <div class="sticker-grid">
-                <button
-                  v-for="sticker in visibleDecorations"
-                  :key="sticker.id || `${sticker.icon}-${sticker.tone}`"
-                  :class="sticker.tone"
-                  type="button"
-                  @click="addDecoration(sticker)"
-                >
-                  <img v-if="sticker.imageSrc" :src="sticker.imageSrc" :alt="sticker.label || '스티커'" />
-                  <span v-else>{{ sticker.icon }}</span>
-                </button>
-              </div>
-              <p class="shop-help">스티커, 프레임, 말풍선을 붙인 뒤 드래그로 이동할 수 있어요.</p>
-            </section>
+            <sticker-panel
+              :sticker-categories="stickerCategories"
+              :active-sticker-category="activeStickerCategory"
+              :visible-decorations="visibleDecorations"
+              @change-category="activeStickerCategory = $event"
+              @add-decoration="addDecoration"
+            />
 
-            <section class="panel-card">
-              <header>
-                <h3>이미지 첨부</h3>
-                <span>내 이미지 붙이기</span>
-              </header>
-              <label class="upload-drop">
-                <input type="file" accept="image/*" @change="handleImageUpload" />
-                <span>＋</span>
-                <b>이미지 선택</b>
-                <small>선택한 이미지를 다이어리 위에 붙이고 드래그로 이동할 수 있어요.</small>
-              </label>
-            </section>
+            <image-upload-panel @image-upload="handleImageUpload" />
 
             <section class="panel-card">
               <header>
@@ -343,6 +309,8 @@ import BadgeModal from "./components/modal/BadgeModal.vue";
 import ProfileModal from "./components/modal/ProfileModal.vue";
 import RecordModal from "./components/modal/RecordModal.vue";
 import SaveToast from "./components/modal/SaveToast.vue";
+import ImageUploadPanel from "./components/record/ImageUploadPanel.vue";
+import StickerPanel from "./components/record/StickerPanel.vue";
 import { canvasTools, nav, recentTags } from "./constants/navigation";
 import { decorations, stickerCategories } from "./constants/stickers";
 import { defaultAnalysis } from "./constants/defaultAnalysis";
@@ -351,10 +319,12 @@ export default {
   name: "App",
   components: {
     BadgeModal,
+    ImageUploadPanel,
     ProfileModal,
     RecordModal,
     SaveToast,
     Sidebar,
+    StickerPanel,
     Topbar,
   },
   data() {
