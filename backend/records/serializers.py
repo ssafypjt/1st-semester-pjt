@@ -9,7 +9,7 @@ from rest_framework import serializers
 from works.models import Work
 from works.serializers import WorkSerializer
 
-from .models import Decoration, FavoriteScene, Record, RecordImage
+from .models import Comment, Decoration, FavoriteScene, Like, Record, RecordImage
 
 
 # ── RecordImage ──────────────────────────────────────
@@ -50,13 +50,28 @@ class _OwnershipMixin:
         return obj.user_id == request.user.id
 
 
-class RecordListSerializer(_OwnershipMixin, serializers.ModelSerializer):
+class _LikeMixin:
+    """is_liked 필드용 헬퍼. 로그인한 유저의 좋아요 여부.
+
+    1차 구현: 객체별 쿼리 (N+1 가능성 있음).
+    후속: list 의 get_queryset 에서 Exists() annotate 로 최적화 예정
+    (PROJECT_CONTEXT.md 참고).
+    """
+    def get_is_liked(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return False
+        return obj.likes.filter(user_id=request.user.id).exists()
+
+
+class RecordListSerializer(_OwnershipMixin, _LikeMixin, serializers.ModelSerializer):
     """목록용 (work 정보 일부 포함)."""
     work_title = serializers.CharField(source='work.title_ko', read_only=True)
     work_poster = serializers.CharField(source='work.poster_image', read_only=True)
     work_type = serializers.CharField(source='work.work_type', read_only=True)
     user_nickname = serializers.CharField(source='user.nickname', read_only=True)
     is_mine = serializers.SerializerMethodField()
+    is_liked = serializers.SerializerMethodField()
     # 카드 대표 제목 — 사용자가 직접 지은 제목(canvas_data.title) 우선, 없으면 작품명.
     title = serializers.SerializerMethodField()
 
@@ -64,7 +79,8 @@ class RecordListSerializer(_OwnershipMixin, serializers.ModelSerializer):
         model = Record
         fields = ['id', 'user_nickname', 'work', 'work_title', 'work_poster',
                   'work_type', 'title', 'rating', 'watched_date', 'visibility',
-                  'like_count', 'comment_count', 'created_at', 'is_mine']
+                  'like_count', 'comment_count', 'created_at', 'is_mine',
+                  'is_liked']
 
     def get_title(self, obj):
         cd = obj.canvas_data or {}
@@ -72,7 +88,7 @@ class RecordListSerializer(_OwnershipMixin, serializers.ModelSerializer):
             or obj.work.title_ko or obj.work.title
 
 
-class RecordDetailSerializer(_OwnershipMixin, serializers.ModelSerializer):
+class RecordDetailSerializer(_OwnershipMixin, _LikeMixin, serializers.ModelSerializer):
     """상세용 (work 전체, decoration, favorite_scene 포함).
 
     작품은 작품명 텍스트(work_title)로 받는다. 같은 제목이면 Work 재사용,
@@ -100,6 +116,7 @@ class RecordDetailSerializer(_OwnershipMixin, serializers.ModelSerializer):
     decorations = DecorationSerializer(many=True, read_only=True)
     favorite_scenes = FavoriteSceneSerializer(many=True, read_only=True)
     is_mine = serializers.SerializerMethodField()
+    is_liked = serializers.SerializerMethodField()
 
     class Meta:
         model = Record
@@ -107,10 +124,10 @@ class RecordDetailSerializer(_OwnershipMixin, serializers.ModelSerializer):
                   'work_type_hint',
                   'rating', 'watched_date', 'content', 'canvas_data', 'status',
                   'visibility', 'like_count', 'comment_count',
-                  'decorations', 'favorite_scenes', 'is_mine',
+                  'decorations', 'favorite_scenes', 'is_mine', 'is_liked',
                   'created_at', 'updated_at']
         read_only_fields = ['id', 'like_count', 'comment_count',
-                            'created_at', 'updated_at', 'is_mine']
+                            'created_at', 'updated_at', 'is_mine', 'is_liked']
 
     def _resolve_work(self, validated_data):
         title = (validated_data.pop('work_title', '') or '').strip()
@@ -143,3 +160,35 @@ class RecordDetailSerializer(_OwnershipMixin, serializers.ModelSerializer):
     def update(self, instance, validated_data):
         self._resolve_work(validated_data)
         return super().update(instance, validated_data)
+
+
+# ── Comment (1차 구현) ────────────────────────────────
+class CommentSerializer(serializers.ModelSerializer):
+    """기록 댓글 1차 구현.
+
+    - 단일 depth (대댓글 없음).
+    - record/user 는 view 에서 채워주는 read-only 필드.
+    - 수정/삭제 엔드포인트는 후속 작업 (PROJECT_CONTEXT.md 참고).
+    """
+    user_nickname = serializers.CharField(source='user.nickname', read_only=True)
+    user_profile_image = serializers.SerializerMethodField()
+    is_mine = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Comment
+        fields = ['id', 'record', 'user', 'user_nickname', 'user_profile_image',
+                  'content', 'is_mine', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'record', 'user', 'user_nickname',
+                            'user_profile_image', 'is_mine',
+                            'created_at', 'updated_at']
+
+    def get_user_profile_image(self, obj):
+        if obj.user.profile_image:
+            return obj.user.profile_image.url
+        return None
+
+    def get_is_mine(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return False
+        return obj.user_id == request.user.id

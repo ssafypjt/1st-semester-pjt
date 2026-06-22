@@ -4,7 +4,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
-from .models import SocialAccount, User
+from .models import Follow, SocialAccount, User
 
 PROFILE_ALLOWED_EXT = {'.png', '.jpg', '.jpeg', '.webp', '.gif'}
 
@@ -25,12 +25,24 @@ def validate_profile_image(image):
 
 
 class UserSerializer(serializers.ModelSerializer):
+    """로그인 유저 본인 정보 응답용.
+
+    follower_count / following_count: annotate 또는 역참조 집계.
+    is_following: 요청자가 이 유저를 팔로우 중인지 여부 (본인 조회 시 False).
+    """
     profile_image = serializers.SerializerMethodField()
     social_providers = serializers.SerializerMethodField()
+    follower_count = serializers.SerializerMethodField()
+    following_count = serializers.SerializerMethodField()
+    is_following = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'email', 'nickname', 'profile_image', 'social_providers', 'created_at']
+        fields = [
+            'id', 'email', 'nickname', 'profile_image', 'social_providers',
+            'follower_count', 'following_count', 'is_following',
+            'created_at',
+        ]
         read_only_fields = ['id', 'created_at']
 
     def get_profile_image(self, obj):
@@ -43,6 +55,25 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_social_providers(self, obj):
         return list(obj.social_accounts.values_list('provider', flat=True))
+
+    def get_follower_count(self, obj):
+        # annotate('follower_count')가 있으면 그 값을, 없으면 역참조 집계
+        if hasattr(obj, 'follower_count'):
+            return obj.follower_count
+        return obj.follower_set.count()
+
+    def get_following_count(self, obj):
+        if hasattr(obj, 'following_count'):
+            return obj.following_count
+        return obj.following_set.count()
+
+    def get_is_following(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return False
+        if request.user.pk == obj.pk:
+            return False
+        return Follow.objects.filter(follower=request.user, following=obj).exists()
 
 
 class SignupSerializer(serializers.ModelSerializer):
@@ -122,6 +153,32 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
         return instance
 
 
+class FollowUserSerializer(serializers.ModelSerializer):
+    """팔로워/팔로잉 목록의 유저 카드용 (경량)."""
+    profile_image = serializers.SerializerMethodField()
+    is_following = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ['id', 'nickname', 'profile_image', 'is_following']
+
+    def get_profile_image(self, obj):
+        if not obj.profile_image:
+            return None
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(obj.profile_image.url)
+        return obj.profile_image.url
+
+    def get_is_following(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return False
+        if request.user.pk == obj.pk:
+            return False
+        return Follow.objects.filter(follower=request.user, following=obj).exists()
+
+
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, style={'input_type': 'password'})
@@ -151,3 +208,23 @@ class PasswordChangeSerializer(serializers.Serializer):
                 {'new_password': '새 비밀번호는 기존 비밀번호와 달라야 합니다.'}
             )
         return attrs
+
+
+# ── 비밀번호 재설정 (이메일 인증) ──────────────────────
+class PasswordResetRequestSerializer(serializers.Serializer):
+    """재설정 메일 발송 요청. 계정 존재 여부와 무관하게 동일 응답을 위해
+    이메일 자체의 형식만 검증한다 (존재 여부는 view에서 조용히 처리)."""
+    email = serializers.EmailField()
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    """재설정 링크의 uid/token + 새 비밀번호 확인.
+
+    new_password 의 validate_password(user=...) 검증은 view에서
+    uid로 조회한 user 컨텍스트와 함께 수행한다 (UserAttributeSimilarityValidator 등이
+    이메일/닉네임 기반 검사를 할 수 있도록 — PasswordChangeSerializer와 동일한 수준).
+    """
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    new_password = serializers.CharField(write_only=True, min_length=8,
+                                          style={'input_type': 'password'})

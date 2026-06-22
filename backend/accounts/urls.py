@@ -8,5 +8,15 @@ urlpatterns = [
     path('logout/', views.logout_view, name='logout'),
     path('me/', views.me, name='me'),
     path('me/update/', views.profile_update, name='profile-update'),
+    path('me/delete/', views.account_delete, name='account-delete'),
     path('password/change/', views.password_change, name='password-change'),
+    path('password/reset/', views.password_reset_request, name='password-reset-request'),
+    path('password/reset/confirm/', views.password_reset_confirm, name='password-reset-confirm'),
+    # 유저 프로필 공개 조회
+    path('users/<int:pk>/', views.user_profile, name='user-profile'),
+    # 팔로우 토글
+    path('users/<int:pk>/follow/', views.follow_toggle, name='follow-toggle'),
+    # 팔로워 / 팔로잉 목록
+    path('users/<int:pk>/followers/', views.follower_list, name='follower-list'),
+    path('users/<int:pk>/following/', views.following_list, name='following-list'),
 ]
