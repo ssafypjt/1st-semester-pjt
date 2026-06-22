@@ -77,6 +77,12 @@ urlpatterns = [
     path('signup/', FrontendAppView.as_view(), name='signup-page'),
     path('deokkku/login/', FrontendAppView.as_view(), name='deokkku-login-page'),
     path('deokkku/join/', FrontendAppView.as_view(), name='deokkku-join-page'),
+    path('deokkku/', DistFrontendAppView.as_view(), name='deokkku-app'),
+    path('deokkku/home/', DistFrontendAppView.as_view(), name='deokkku-home'),
+    path('deokkku/my_album/', DistFrontendAppView.as_view(), name='deokkku-my-album'),
+    path('diaries/', DistFrontendAppView.as_view(), name='diary-list-page'),
+    path('reviews/', DistFrontendAppView.as_view(), name='review-list-page'),
+    path('mypage/', DistFrontendAppView.as_view(), name='mypage'),
 ]
 
 if settings.DEBUG:

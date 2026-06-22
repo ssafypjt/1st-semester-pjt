@@ -14,6 +14,7 @@
       <button class="saved-card-delete" type="button" title="삭제" aria-label="삭제" @click.stop="$emit('delete-card', card.id)">
         ×
       </button>
+      <img v-if="card.imageSrc" class="saved-card-poster" :src="card.imageSrc" alt="" />
       <small>{{ card.date }}</small>
       <h3>{{ card.title }}</h3>
       <p>{{ card.rating }} / 10 {{ stars(card.rating) }}</p>

@@ -278,6 +278,16 @@ import { canvasTools, nav, recentTags } from "./constants/navigation";
 import { decorations, stickerCategories } from "./constants/stickers";
 import { defaultAnalysis } from "./constants/defaultAnalysis";
 
+function initialPageFromPath() {
+  const path = window.location.pathname;
+  if (path === "/deokkku/" || path === "/deokkku/home/") return "홈";
+  if (path === "/deokkku/my_album/" || path === "/diaries/") return "내 앨범";
+  if (path.startsWith("/diaries/")) return "내 앨범";
+  if (path === "/reviews/" || path.startsWith("/reviews/")) return "리뷰";
+  if (path === "/mypage/") return "마이페이지";
+  return "기록 작성";
+}
+
 export default {
   name: "App",
   components: {
@@ -296,7 +306,7 @@ export default {
     return {
       simpleLogoUrl,
       query: "",
-      activePage: "기록 작성",
+      activePage: initialPageFromPath(),
       activeStickerCategory: "전체",
       isRecordModalOpen: false,
       selectedDecorationId: null,
@@ -1041,15 +1051,16 @@ export default {
     apiRecordToSavedCard(record) {
       const cd = record.canvas_data || {};
       const placedItems = cd.placed_items || [];
-      const title = (cd.title || "").trim() || record.work_title || record.anime_title || "제목 없는 기록";
-      const watchedDate = record.watched_date
-        ? record.watched_date.replaceAll("-", ".")
-        : "";
+      const title = (cd.title || "").trim() || record.work_title || record.title || record.anime_title || "제목 없는 기록";
+      const rawDate = record.watched_date || record.created_at || "";
+      const watchedDate = rawDate ? rawDate.slice(0, 10).replaceAll("-", ".") : "";
+      const imageSrc = cd.main_image_src || record.work_poster || "";
       return {
         id: record.id,
         title,
         date: watchedDate,
         rating: record.rating ?? 0,
+        imageSrc,
         memoCount: placedItems.filter((i) => i.type === "text").length,
         stickerCount: placedItems.filter((i) => i.type !== "text").length,
         savedAt: record.created_at,
@@ -1062,7 +1073,7 @@ export default {
             tags: [],
           },
           placedItems,
-          mainImageSrc: cd.main_image_src || "",
+          mainImageSrc: imageSrc,
           analysis: cd.analysis || null,
         },
       };
@@ -1072,7 +1083,7 @@ export default {
     async loadSavedCards() {
       try {
         const data = await this.apiFetch("/api/records/");
-        const results = Array.isArray(data) ? data : (data.results || []);
+        const results = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : []);
         this.savedCards = results.map((r) => this.apiRecordToSavedCard(r));
       } catch (error) {
         console.error("기록 목록 불러오기 실패:", error);
@@ -1137,6 +1148,12 @@ export default {
 
     // ── 저장된 카드 열기 ──────────────────────────────────────────────────
     openSavedCard(card) {
+      if (card.id) {
+        const baseUrl = ["5173", "5174"].includes(window.location.port)
+          ? (import.meta.env.BASE_URL || "/").replace(/\/$/, "")
+          : "";
+        window.history.pushState({}, "", `${baseUrl}/diaries/${card.id}/`);
+      }
       this.currentRecord = this.cloneForSave(
         card.snapshot?.record || {
           title: card.title,
