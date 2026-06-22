@@ -1055,6 +1055,7 @@ export default {
       const rawDate = record.watched_date || record.created_at || "";
       const watchedDate = rawDate ? rawDate.slice(0, 10).replaceAll("-", ".") : "";
       const imageSrc = cd.main_image_src || record.work_poster || "";
+
       return {
         id: record.id,
         title,
@@ -1101,8 +1102,10 @@ export default {
       try {
         const recordTitle = (this.currentRecord.title || this.recordForm.title || "").trim() || "제목 없는 기록";
         const payload = {
+
           work_title: recordTitle,
           anime_title: recordTitle,
+
           rating: this.currentRecord.rating ?? null,
           watched_date: this.formatInputDate(this.currentRecord.date) || null,
           content: this.currentRecord.memo || "",
