@@ -183,38 +183,16 @@
               <p>{{ pageDescription }}</p>
             </div>
           </header>
-          <section v-if="activePage === nav[4]" class="mypage-dashboard archive-profile">
-            <article class="profile-hero-card">
-              <div class="profile-avatar-preview">
-                <img v-if="profilePreviewUrl" :src="profilePreviewUrl" alt="" />
-                <span v-else>{{ profileInitial }}</span>
-              </div>
-              <div class="profile-identity">
-                <small>덕꾸 아카이브</small>
-                <h3>{{ currentUser?.nickname || '내 프로필' }}</h3>
-                <p>{{ currentUser?.email || '' }}</p>
-                <span v-if="currentUser?.created_at">가입일 {{ formatProfileDate(currentUser.created_at) }}</span>
-              </div>
-              <button class="profile-edit-toggle" type="button" @click="openProfileModal">프로필 수정</button>
-            </article>
-
-            <section class="profile-stats compact-stats" aria-label="활동 통계">
-              <article
-                v-for="stat in profileStats"
-                :key="stat.label"
-                :class="{ clickable: stat.action }"
-                :role="stat.action ? 'button' : null"
-                :tabindex="stat.action ? 0 : null"
-                @click="stat.action === 'badges' && openBadgeModal()"
-                @keydown.enter.prevent="stat.action === 'badges' && openBadgeModal()"
-                @keydown.space.prevent="stat.action === 'badges' && openBadgeModal()"
-              >
-                <span>{{ stat.icon }}</span>
-                <small>{{ stat.label }}</small>
-                <b>{{ stat.value }}</b>
-              </article>
-            </section>
-          </section>
+          <my-page-dashboard
+            v-if="activePage === nav[4]"
+            :current-user="currentUser"
+            :profile-preview-url="profilePreviewUrl"
+            :profile-initial="profileInitial"
+            :joined-date="currentUser?.created_at ? formatProfileDate(currentUser.created_at) : ''"
+            :profile-stats="profileStats"
+            @edit-profile="openProfileModal"
+            @open-badges="openBadgeModal"
+          />
 
           <div v-if="activePage !== nav[4]" class="detail-grid">
             <article
@@ -233,31 +211,13 @@
               <p>{{ card.body }}</p>
             </article>
           </div>
-          <div v-if="activePage === '내 앨범'" class="saved-album-grid">
-            <article
-              v-for="card in savedCards"
-              :key="card.id"
-              class="saved-card"
-              role="button"
-              tabindex="0"
-              title="저장된 기록 열기"
-              @click="openSavedCard(card)"
-              @keydown.enter.prevent="openSavedCard(card)"
-              @keydown.space.prevent="openSavedCard(card)"
-            >
-              <button class="saved-card-delete" type="button" title="삭제" aria-label="삭제" @click.stop="deleteSavedCard(card.id)">
-                ×
-              </button>
-              <small>{{ card.date }}</small>
-              <h3>{{ card.title }}</h3>
-              <p>{{ card.rating }} / 10 {{ stars(card.rating) }}</p>
-              <span>스티커 {{ card.stickerCount || 0 }}개 · 메모 {{ card.memoCount || 0 }}개 저장됨</span>
-            </article>
-            <article v-if="savedCards.length === 0" class="saved-empty">
-              <b>아직 저장한 카드가 없어요</b>
-              <p>기록 작성에서 다이어리를 꾸민 뒤 저장을 누르면 여기에 보관됩니다.</p>
-            </article>
-          </div>
+          <saved-album-grid
+            v-if="activePage === '내 앨범'"
+            :saved-cards="savedCards"
+            :stars="stars"
+            @open-card="openSavedCard"
+            @delete-card="deleteSavedCard"
+          />
         </section>
 
         <record-modal
@@ -303,12 +263,14 @@
 
 <script>
 import simpleLogoUrl from "./assets/images/simple_logo.png";
+import SavedAlbumGrid from "./components/album/SavedAlbumGrid.vue";
 import Sidebar from "./components/layout/Sidebar.vue";
 import Topbar from "./components/layout/Topbar.vue";
 import BadgeModal from "./components/modal/BadgeModal.vue";
 import ProfileModal from "./components/modal/ProfileModal.vue";
 import RecordModal from "./components/modal/RecordModal.vue";
 import SaveToast from "./components/modal/SaveToast.vue";
+import MyPageDashboard from "./components/profile/MyPageDashboard.vue";
 import ImageUploadPanel from "./components/record/ImageUploadPanel.vue";
 import StickerPanel from "./components/record/StickerPanel.vue";
 import { canvasTools, nav, recentTags } from "./constants/navigation";
@@ -320,8 +282,10 @@ export default {
   components: {
     BadgeModal,
     ImageUploadPanel,
+    MyPageDashboard,
     ProfileModal,
     RecordModal,
+    SavedAlbumGrid,
     SaveToast,
     Sidebar,
     StickerPanel,
