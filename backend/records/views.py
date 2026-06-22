@@ -48,6 +48,11 @@ class RecordViewSet(viewsets.ModelViewSet):
         # is_active=True 인 유저만 노출 — 재로그인으로 계정이 복구되면
         # is_active=True 로 돌아가 자동으로 다시 노출된다.
         qs = Record.objects.select_related('user', 'work').filter(user__is_active=True)
+
+        # ?mine=1 → 본인 기록만 (내 앨범용)
+        if user.is_authenticated and self.request.query_params.get('mine'):
+            return qs.filter(user=user)
+
         if user.is_authenticated:
             # 내가 팔로우하는 유저 ID 목록 (friends 공개 범위용)
             following_ids = Follow.objects.filter(

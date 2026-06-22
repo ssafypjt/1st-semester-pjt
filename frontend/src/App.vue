@@ -10,6 +10,67 @@
       <span class="memo memo-right">Today's log<br />감상<br />명장면<br />공유</span>
     </div>
 
+    <!-- ── 로그인 / 회원가입 (미인증 시) ── -->
+    <section v-if="!isCheckingAuth && !currentUser" class="login-stage">
+      <article class="login-card">
+        <div class="login-panel">
+          <h1><span>덕꾸</span>{{ loginForm.mode === 'signup' ? ' 회원가입' : '에 로그인' }}</h1>
+          <p v-if="loginForm.mode === 'login'">좋아하는 순간을 기록하고,<br />나만의 다꾸 앨범을 만들어보세요 ✨</p>
+          <p v-else>좋아하는 애니 기록을 모으고,<br />나만의 다꾸 아카이브를 시작해보세요 ✨</p>
+
+          <form @submit.prevent="loginForm.mode === 'signup' ? handleSignup() : handleLogin()">
+            <label class="field">
+              <span>♙</span>
+              <input type="email" placeholder="이메일 주소" v-model="loginForm.email" required />
+              <b>✉</b>
+            </label>
+            <label v-if="loginForm.mode === 'signup'" class="field">
+              <span>◇</span>
+              <input type="text" placeholder="닉네임" v-model="loginForm.nickname" />
+              <b>✎</b>
+            </label>
+            <label class="field">
+              <span>▣</span>
+              <input type="password" placeholder="비밀번호" v-model="loginForm.password" required />
+              <b>◌</b>
+            </label>
+
+            <div v-if="loginForm.mode === 'login'" class="login-options">
+              <label><input type="checkbox" /> 로그인 상태 유지</label>
+              <button type="button">비밀번호 찾기</button>
+            </div>
+
+            <p v-if="loginForm.error" class="auth-error">{{ loginForm.error }}</p>
+            <button class="primary full" type="submit" :disabled="loginForm.loading">
+              {{ loginForm.loading ? '확인 중...' : (loginForm.mode === 'signup' ? '회원가입' : '로그인') }}
+            </button>
+          </form>
+
+          <div class="divider"><span>또는</span></div>
+          <button class="oauth" type="button"><b>G</b> Google로 계속하기</button>
+          <button class="oauth" type="button"><b>●</b> 카카오로 계속하기</button>
+          <button class="oauth" type="button"><b></b> Apple로 계속하기</button>
+
+          <p v-if="loginForm.mode === 'login'" class="join">계정이 없으신가요? <button type="button" @click="loginForm.mode = 'signup'; loginForm.error = ''">회원가입</button></p>
+          <p v-else class="join">이미 계정이 있으신가요? <button type="button" @click="loginForm.mode = 'login'; loginForm.error = ''">로그인</button></p>
+        </div>
+
+        <div class="brand-panel">
+          <img class="main-logo-img" :src="mainLogoUrl" alt="덕꾸 Deokkku 대표 로고" />
+          <p class="brand-copy">
+            애니를 보고 설레였던 그 순간,<br />
+            좋아하는 장면, 캐릭터, 대사까지<br />
+            나만의 다꾸로 예쁘게 기록해보세요!
+          </p>
+          <div class="feature-row">
+            <div><span>♡</span><b>나만의 앨범</b><small>애니별로 정리</small></div>
+            <div><span>✧</span><b>자유로운 꾸미기</b><small>스티커와 메모</small></div>
+            <div><span>↗</span><b>쉽게 공유하기</b><small>링크와 이미지</small></div>
+          </div>
+        </div>
+      </article>
+    </section>
+
     <section v-if="!isCheckingAuth && currentUser" class="workspace">
       <sidebar
         :simple-logo-url="simpleLogoUrl"
@@ -339,6 +400,7 @@
 
 <script>
 import simpleLogoUrl from "./assets/images/simple_logo.png";
+import mainLogoUrl from "./assets/images/main-logo.png";
 import SavedAlbumGrid from "./components/album/SavedAlbumGrid.vue";
 import Sidebar from "./components/layout/Sidebar.vue";
 import Topbar from "./components/layout/Topbar.vue";
@@ -370,8 +432,10 @@ export default {
   data() {
     return {
       simpleLogoUrl,
+      mainLogoUrl,
       query: "",
-      activePage: "기록 작성",
+      activePage: localStorage.getItem("deokkku:activePage") || "내 앨범",
+      _dirty: false,
       activeStickerCategory: "전체",
       isRecordModalOpen: false,
       selectedDecorationId: null,
@@ -428,12 +492,27 @@ export default {
       currentRecordId: null,  // 현재 편집 중인 백엔드 Record ID (null이면 신규)
       isSaving: false,         // 저장 중 중복 요청 방지
 
+      // ── 로그인 폼 ──
+      loginForm: {
+        email: '',
+        password: '',
+        nickname: '',
+        error: '',
+        loading: false,
+        mode: 'login',  // 'login' | 'signup'
+      },
+
       // ── 공유 카드 ──
       isShareModalOpen: false,   // 공유 모달 열림
       shareCards: [],            // 생성된 공유 카드 목록
       isGeneratingCard: false,   // AI 카드 생성 중
       shareCardError: '',        // 에러 메시지
     };
+  },
+  watch: {
+    placedItems: { handler() { this._dirty = true; }, deep: true },
+    mainImageSrc() { this._dirty = true; },
+    currentRecord: { handler() { this._dirty = true; }, deep: true },
   },
   computed: {
     selectedView() {
@@ -531,9 +610,11 @@ export default {
     document.addEventListener("click", this.handleProfileOutsideClick);
     document.addEventListener("keydown", this.handleGlobalKeydown);
 
-    // 새로고침/탭 닫기 시 임시저장 + 확인 다이얼로그
+    // 새로고침/탭 닫기 시 임시저장 + 확인 다이얼로그 (기록 작성 중 + 미저장 변경 있을 때만)
+    this._isEditing = () =>
+      this.activePage === "기록 작성" && this._dirty && (this.placedItems.length > 0 || this.mainImageSrc);
     this._beforeUnloadHandler = (e) => {
-      if (this.placedItems.length > 0 || this.mainImageSrc) {
+      if (this._isEditing()) {
         this._autosaveDraft();
         e.preventDefault();
         e.returnValue = "";
@@ -541,7 +622,7 @@ export default {
     };
     window.addEventListener("beforeunload", this._beforeUnloadHandler);
     window.addEventListener("pagehide", () => {
-      if (this.placedItems.length > 0 || this.mainImageSrc) {
+      if (this._isEditing()) {
         this._autosaveDraft();
       }
     });
@@ -550,6 +631,7 @@ export default {
     this.checkAuth();
     this.loadSavedCards().then(() => {
       this._checkAutosaveRestore();
+      this.$nextTick(() => { this._dirty = false; });
     });
   },
   beforeUnmount() {
@@ -566,10 +648,11 @@ export default {
         this.resetProfileForm();
         this.loadRepresentativeBadges();
         this.loadUserStickers();
-        this.isCheckingAuth = false;
       } catch (error) {
-        console.error(error);
-        window.location.href = this.loginRedirectUrl();
+        console.error("인증 확인 실패 — 로그인 필요:", error);
+        this.currentUser = null;
+      } finally {
+        this.isCheckingAuth = false;
       }
     },
     loginRedirectUrl() {
@@ -793,7 +876,7 @@ export default {
         this.isProfileSaving = false;
       }
     },
-    async apiFetch(url, options = {}) {
+    async apiFetch(url, options = {}, _retried = false) {
       const method = (options.method || "GET").toUpperCase();
       const headers = {
         "Content-Type": "application/json",
@@ -809,8 +892,16 @@ export default {
         ...options,
         headers,
       });
+
       if (!response.ok) {
         const responseBody = await response.text();
+
+        // CSRF 403 → 토큰 갱신 후 1회 재시도
+        if (response.status === 403 && needsCsrf && !_retried && responseBody.includes("CSRF")) {
+          this.csrfToken = "";
+          return this.apiFetch(url, options, true);
+        }
+
         let detail = responseBody;
         try {
           const errorData = JSON.parse(responseBody);
@@ -829,19 +920,24 @@ export default {
       if (this.isLoggingOut) return;
       this.isLoggingOut = true;
       try {
+        // CSRF 토큰 강제 갱신 후 로그아웃
+        this.csrfToken = "";
         await this.apiFetch("/api/auth/logout/", {
           method: "POST",
           body: JSON.stringify({}),
         });
-        window.location.href = this.loginRedirectUrl();
       } catch (error) {
-        console.error(error);
-      } finally {
-        this.isLoggingOut = false;
+        console.error("로그아웃 요청 실패 (무시):", error);
       }
+      // 성공/실패 관계없이 로컬 상태 초기화
+      this.currentUser = null;
+      this.csrfToken = "";
+      this.loginForm = { email: '', password: '', nickname: '', error: '', loading: false, mode: 'login' };
+      this.isLoggingOut = false;
     },
     navigatePage(page) {
       this.activePage = page;
+      try { localStorage.setItem("deokkku:activePage", page); } catch (e) { /* ignore */ }
     },
     openProfilePageFromDropdown() {
       this.navigatePage(this.nav[4]);
@@ -1182,7 +1278,7 @@ export default {
     // ── 기록 목록 불러오기 (GET /api/records/) ────────────────────────────
     async loadSavedCards() {
       try {
-        const data = await this.apiFetch("/api/records/");
+        const data = await this.apiFetch("/api/records/?mine=1");
         const results = Array.isArray(data) ? data : (data.results || []);
         this.savedCards = results.map((r) => this.apiRecordToSavedCard(r));
       } catch (error) {
@@ -1238,6 +1334,7 @@ export default {
         }
 
         this.toastMessage = "저장되었습니다";
+        this._dirty = false;
         this._clearAutosave();
       } catch (error) {
         console.error("저장 실패:", error);
@@ -1269,19 +1366,24 @@ export default {
       if (card.snapshot?.analysis) {
         this.ai = this.cloneForSave(card.snapshot.analysis);
       }
+      this.$nextTick(() => { this._dirty = false; });
     },
 
     // ── 기록 삭제 (DELETE /api/records/{id}/) ────────────────────────────
     async deleteSavedCard(cardId) {
       try {
         await this.apiFetch(`/api/records/${cardId}/`, { method: "DELETE" });
-        this.savedCards = this.savedCards.filter((card) => card.id !== cardId);
-        if (this.currentRecordId === cardId) {
-          this.currentRecordId = null;
-        }
       } catch (error) {
-        console.error("삭제 실패:", error);
-        alert("삭제에 실패했습니다. 다시 시도해주세요.");
+        // 404 = 이미 DB에서 삭제된 레코드 → 프론트에서도 제거
+        if (!error.message?.includes("404")) {
+          console.error("삭제 실패:", error);
+          alert("삭제에 실패했습니다. 다시 시도해주세요.");
+          return;
+        }
+      }
+      this.savedCards = this.savedCards.filter((card) => card.id !== cardId);
+      if (this.currentRecordId === cardId) {
+        this.currentRecordId = null;
       }
     },
 
@@ -1382,6 +1484,55 @@ export default {
       }
     },
 
+    // ── SPA 로그인 / 회원가입 ──
+    async handleSignup() {
+      this.loginForm.error = '';
+      this.loginForm.loading = true;
+      try {
+        const user = await this.apiFetch('/api/auth/signup/', {
+          method: 'POST',
+          body: JSON.stringify({
+            email: this.loginForm.email,
+            password: this.loginForm.password,
+            nickname: this.loginForm.nickname || this.loginForm.email.split('@')[0],
+          }),
+        });
+        this.currentUser = user;
+        this.resetProfileForm();
+        this.loadRepresentativeBadges();
+        this.loadUserStickers();
+        this.loadSavedCards();
+        this.loginForm = { email: '', password: '', nickname: '', error: '', loading: false, mode: 'login' };
+      } catch (error) {
+        this.loginForm.error = error.message || '회원가입에 실패했습니다.';
+      } finally {
+        this.loginForm.loading = false;
+      }
+    },
+    async handleLogin() {
+      this.loginForm.error = '';
+      this.loginForm.loading = true;
+      try {
+        const user = await this.apiFetch('/api/auth/login/', {
+          method: 'POST',
+          body: JSON.stringify({
+            email: this.loginForm.email,
+            password: this.loginForm.password,
+          }),
+        });
+        this.currentUser = user;
+        this.resetProfileForm();
+        this.loadRepresentativeBadges();
+        this.loadUserStickers();
+        this.loadSavedCards();
+        this.loginForm = { email: '', password: '', error: '', loading: false, mode: 'login' };
+      } catch (error) {
+        this.loginForm.error = '이메일 또는 비밀번호가 올바르지 않습니다.';
+      } finally {
+        this.loginForm.loading = false;
+      }
+    },
+
     // ── 임시저장 (새로고침/브라우저 종료 대비) ──
     _autosaveKey() {
       return `deokkkuAutosave:${this.currentUser?.email || "guest"}`;
@@ -1411,6 +1562,9 @@ export default {
         const saved = JSON.parse(raw);
         if (!saved?.currentRecord) { this._clearAutosave(); return; }
 
+        // 기록 작성 중이 아니었으면 복원 불필요
+        if (saved.activePage !== "기록 작성") { this._clearAutosave(); return; }
+
         // placedItems가 비어있으면 복원할 의미 없음
         const hasWork = (saved.placedItems?.length > 0) || saved.mainImageSrc;
         if (!hasWork) { this._clearAutosave(); return; }
@@ -1423,8 +1577,7 @@ export default {
           this.placedItems = Array.isArray(saved.placedItems) ? saved.placedItems : [];
           this.mainImageSrc = saved.mainImageSrc || "";
           this.currentRecordId = saved.currentRecordId || null;
-          if (saved.activePage) this.activePage = saved.activePage;
-          this.toastMessage = "임시저장 기록을 복원했습니다.";
+          this.activePage = "기록 작성";
         }
         this._clearAutosave();
       } catch (e) {
