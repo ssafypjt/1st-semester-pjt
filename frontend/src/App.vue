@@ -11,67 +11,28 @@
     </div>
 
     <section v-if="!isCheckingAuth && currentUser" class="workspace">
-      <aside class="sidebar">
-        <button class="brand deokkku-mini" type="button" @click="activePage = '홈'" aria-label="Deokkku">
-          <img class="simple-logo-img" :src="simpleLogoUrl" alt="Deokkku 로고" />
-          <span>덕꾸</span>
-          <small>Deokkku</small>
-        </button>
-        <p>내가 사랑하는 애니메이션을<br />기록하고, 모으고, 공유하는 공간</p>
-        <nav>
-          <button
-            v-for="item in nav"
-            :key="item"
-            :class="{ active: activePage === item }"
-            type="button"
-            @click="navigatePage(item)"
-          >
-            <span>{{ navIcon(item) }}</span>{{ item }}
-          </button>
-        </nav>
-        <div class="today">
-          <b>오늘의 한 마디</b>
-          <p>좋아하는 작품을 기록하는 시간이 내 취향을 더 선명하게 만듭니다.</p>
-        </div>
-        <div class="tags">
-          <b>최근 태그</b>
-          <span v-for="tag in recentTags" :key="tag">#{{ tag }}</span>
-        </div>
-      </aside>
+      <sidebar
+        :simple-logo-url="simpleLogoUrl"
+        :nav="nav"
+        :active-page="activePage"
+        :recent-tags="recentTags"
+        :nav-icon="navIcon"
+        @navigate="navigatePage"
+      />
 
       <main class="main">
-        <header class="topbar">
-          <label class="search">
-            <input v-model="query" placeholder="애니 제목, 캐릭터, 태그로 검색해보세요" />
-            <span>⌕</span>
-          </label>
-          <div class="top-actions">
-            <button class="primary" type="button" @click="openRecordModal">＋ 새 기록</button>
-            <button class="icon-btn" type="button" title="알림">!</button>
-            <div class="profile-menu-wrap" ref="profileMenu">
-              <button class="avatar" type="button" title="Profile" @click.stop="toggleProfileMenu">
-                <img v-if="currentUser && currentUser.profile_image" :src="currentUser.profile_image" alt="" />
-              </button>
-              <section v-if="showProfileMenu" class="profile-dropdown" role="menu">
-                <div class="profile-dropdown-head">
-                  <div class="profile-dropdown-avatar">
-                    <img v-if="currentUser && currentUser.profile_image" :src="currentUser.profile_image" alt="" />
-                    <span v-else>{{ profileInitial }}</span>
-                  </div>
-                  <div>
-                    <b>{{ currentUser?.nickname || '내 프로필' }}</b>
-                    <p>{{ currentUser?.email || '' }}</p>
-                    <small>기록 {{ activityStats.records }}개</small>
-                  </div>
-                </div>
-                <div class="profile-dropdown-actions">
-                  <button type="button" @click="navigatePage(nav[4]); closeProfileMenu()">마이페이지 보기</button>
-                  <button type="button" @click="logout">로그아웃</button>
-                </div>
-              </section>
-            </div>
-          </div>
-        </header>
+        <topbar
+          ref="profileMenu"
+          v-model:query="query"
+          :current-user="currentUser"
+          :show-profile-menu="showProfileMenu"
+          :profile-initial="profileInitial"
+          :activity-stats="activityStats"
+          @open-record="openRecordModal"
+          @toggle-profile="toggleProfileMenu"
+          @view-profile="openProfilePageFromDropdown"
+          @logout="logout"
+        />
 
         <div v-if="activePage === '기록 작성'" class="content-grid">
           <section class="editor-zone">
@@ -449,18 +410,19 @@
 </template>
 
 <script>
-import guineapigUrl from "./assets/images/guineapig.png";
 import simpleLogoUrl from "./assets/images/simple_logo.png";
-
-const defaultAnalysis = {
-  summary: "좋아하는 장면과 감정을 다이어리 카드로 남겨보세요.",
-  phrase: "오래 기억하고 싶은 감상",
-  tags: ["감성", "명장면", "OST", "캐릭터", "공유하기"],
-  preference: "감정선과 장면 기록을 좋아하는 취향",
-};
+import Sidebar from "./components/layout/Sidebar.vue";
+import Topbar from "./components/layout/Topbar.vue";
+import { canvasTools, nav, recentTags } from "./constants/navigation";
+import { decorations, stickerCategories } from "./constants/stickers";
+import { defaultAnalysis } from "./constants/defaultAnalysis";
 
 export default {
   name: "App",
+  components: {
+    Sidebar,
+    Topbar,
+  },
   data() {
     return {
       simpleLogoUrl,
@@ -510,35 +472,11 @@ export default {
       dragging: null,
       resizing: null,
       rotating: null,
-      nav: ["홈", "내 앨범", "기록 작성", "리뷰", "마이페이지"],
-      recentTags: ["감성애니", "인생작", "명장면", "음악", "OST맛집"],
-      canvasTools: [
-        { icon: "▦", label: "배경" },
-        { icon: "★", label: "스티커" },
-        { icon: "T", label: "메모", action: "memo" },
-        { icon: "＋", label: "이미지" },
-        { icon: "◇", label: "테이프" },
-      ],
-      stickerCategories: ["전체", "스티커", "프레임", "말풍선", "아이콘", "배경"],
-      decorations: [
-        { id: "guineapig", icon: "guineapig", label: "기니피그", tone: "sticker-image guineapig-sticker", category: "스티커", imageSrc: guineapigUrl },
-        { icon: "♡", tone: "pink", category: "스티커" },
-        { icon: "★", tone: "purple", category: "스티커" },
-        { icon: "✦", tone: "line", category: "스티커" },
-        { icon: "♪", tone: "soft", category: "스티커" },
-        { icon: "!", tone: "pink", category: "아이콘" },
-        { icon: "#", tone: "purple", category: "아이콘" },
-        { icon: "Zzz", tone: "line bubble", category: "말풍선" },
-        { icon: "좋아해", tone: "pink bubble", category: "말풍선" },
-        { icon: "최애 장면", tone: "purple bubble", category: "말풍선" },
-        { icon: "POLA", tone: "ink frame", category: "프레임" },
-        { icon: "FILM", tone: "purple frame", category: "프레임" },
-        { icon: "grid", tone: "soft bg", category: "배경" },
-        { icon: "dot", tone: "pink bg", category: "배경" },
-        { icon: "tape", tone: "masking-tape tape-lavender", category: "스티커" },
-        { icon: "tape", tone: "masking-tape tape-rose", category: "스티커" },
-        { icon: "tape", tone: "masking-tape tape-mint", category: "스티커" },
-      ],
+      nav,
+      recentTags,
+      canvasTools,
+      stickerCategories,
+      decorations,
       placedItems: [],
       ai: defaultAnalysis,
       currentRecordId: null,  // 현재 편집 중인 백엔드 Record ID (null이면 신규)
@@ -927,6 +865,10 @@ export default {
     },
     navigatePage(page) {
       this.activePage = page;
+    },
+    openProfilePageFromDropdown() {
+      this.navigatePage(this.nav[4]);
+      this.closeProfileMenu();
     },
     navIcon(item) {
       const icons = {
