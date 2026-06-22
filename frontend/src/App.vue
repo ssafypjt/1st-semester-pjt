@@ -294,116 +294,42 @@
           </div>
         </section>
 
-        <div v-if="isRecordModalOpen" class="modal-backdrop" @click.self="closeRecordModal">
-          <section class="record-modal" role="dialog" aria-modal="true" aria-label="기록 정보 수정">
-            <header>
-              <h3>{{ recordModalMode === 'edit' ? '기록 정보 수정' : '새 기록 만들기' }}</h3>
-              <button type="button" @click="closeRecordModal">×</button>
-            </header>
-            <label>
-              <span>작품명</span>
-              <input v-model="recordForm.title" placeholder="애니메이션 제목을 입력하세요" />
-            </label>
-            <label>
-              <span>감상 날짜</span>
-              <input type="date" v-model="recordForm.date" />
-            </label>
-            <label>
-              <span>별점</span>
-              <input type="range" min="0" max="10" step="0.5" v-model.number="recordForm.rating" />
-              <b>{{ recordForm.rating }} / 10 {{ stars(recordForm.rating) }}</b>
-            </label>
-            <div class="modal-actions">
-              <button type="button" @click="closeRecordModal">취소</button>
-              <button class="primary" type="button" @click="createBlankRecord">
-                {{ recordModalMode === 'edit' ? '수정하기' : '시작하기' }}
-              </button>
-            </div>
-          </section>
-        </div>
+        <record-modal
+          v-if="isRecordModalOpen"
+          v-model:record-form="recordForm"
+          :mode="recordModalMode"
+          :stars="stars"
+          @close="closeRecordModal"
+          @submit="createBlankRecord"
+        />
 
-        <div v-if="toastMessage" class="save-popup-backdrop" @click.self="toastMessage = ''">
-          <section class="save-popup" role="alertdialog" aria-modal="true" aria-label="저장 완료 안내">
-            <strong>{{ toastMessage }}</strong>
-            <p>내 앨범에서 저장한 다이어리 카드를 확인할 수 있어요.</p>
-            <div>
-              <button type="button" @click="toastMessage = ''">확인</button>
-              <button class="primary" type="button" @click="navigatePage('내 앨범'); toastMessage = ''">내 앨범 보기</button>
-            </div>
-          </section>
-        </div>
+        <save-toast
+          v-if="toastMessage"
+          :message="toastMessage"
+          @close="toastMessage = ''"
+          @view-album="openAlbumFromToast"
+        />
 
-        <div v-if="isProfileModalOpen" class="profile-modal-backdrop" @click.self="closeProfileModal">
-          <form class="profile-modal" role="dialog" aria-modal="true" aria-label="프로필 수정" @submit.prevent="updateProfile">
-            <header>
-              <div>
-                <h3>프로필 수정</h3>
-                <p>닉네임과 프로필 이미지를 변경합니다.</p>
-              </div>
-              <button type="button" @click="closeProfileModal" aria-label="닫기">×</button>
-            </header>
-            <div class="profile-modal-body">
-              <div class="profile-avatar-preview">
-                <img v-if="profilePreviewUrl" :src="profilePreviewUrl" alt="" />
-                <span v-else>{{ profileInitial }}</span>
-              </div>
-              <section class="profile-editor">
-                <label>
-                  <span>닉네임</span>
-                  <input type="text" v-model.trim="profileForm.nickname" minlength="2" maxlength="20" required />
-                </label>
-                <label>
-                  <span>프로필 이미지</span>
-                  <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" @change="handleProfileImageChange" />
-                </label>
-                <label class="profile-check">
-                  <input type="checkbox" v-model="profileForm.removeProfileImage" :disabled="!currentUser?.profile_image && !profileForm.profileImage" />
-                  <span>현재 이미지 삭제</span>
-                </label>
-              </section>
-            </div>
-            <p v-if="profileStatus.message" class="profile-status" :class="{ error: profileStatus.type === 'error' }">
-              {{ profileStatus.message }}
-            </p>
-            <div class="profile-actions">
-              <button type="button" @click="closeProfileModal">취소</button>
-              <button class="primary" type="submit" :disabled="isProfileSaving">
-                {{ isProfileSaving ? '저장 중...' : '저장하기' }}
-              </button>
-            </div>
-          </form>
-        </div>
+        <profile-modal
+          v-if="isProfileModalOpen"
+          v-model:profile-form="profileForm"
+          :profile-preview-url="profilePreviewUrl"
+          :profile-initial="profileInitial"
+          :profile-status="profileStatus"
+          :current-user="currentUser"
+          :is-profile-saving="isProfileSaving"
+          @close="closeProfileModal"
+          @submit="updateProfile"
+          @image-change="handleProfileImageChange"
+        />
 
-        <div v-if="isBadgeModalOpen" class="profile-modal-backdrop badge-modal-backdrop" @click.self="closeBadgeModal">
-          <section class="badge-modal" role="dialog" aria-modal="true" aria-label="대표 뱃지 설정">
-            <header>
-              <div>
-                <h3>대표 뱃지 설정</h3>
-                <p>프로필에 보여줄 뱃지를 최대 3개까지 선택하세요.</p>
-              </div>
-              <button type="button" @click="closeBadgeModal" aria-label="닫기">×</button>
-            </header>
-            <div class="badge-list badge-modal-list">
-              <button
-                v-for="badge in availableBadges"
-                :key="badge.id"
-                type="button"
-                :class="{ active: selectedBadgeIds.includes(badge.id), locked: !badge.unlocked }"
-                :disabled="!badge.unlocked"
-                @click="toggleRepresentativeBadge(badge)"
-              >
-                <span>{{ badge.icon }}</span>
-                <b>{{ badge.label }}</b>
-                <small>{{ badge.description }}</small>
-                <em>{{ selectedBadgeIds.includes(badge.id) ? '대표 표시 중' : (badge.unlocked ? '선택 가능' : '미획득') }}</em>
-              </button>
-            </div>
-            <footer>
-              <small>{{ selectedBadgeIds.length }} / 3 선택됨</small>
-              <button class="primary" type="button" @click="closeBadgeModal">완료</button>
-            </footer>
-          </section>
-        </div>
+        <badge-modal
+          v-if="isBadgeModalOpen"
+          :available-badges="availableBadges"
+          :selected-badge-ids="selectedBadgeIds"
+          @close="closeBadgeModal"
+          @toggle-badge="toggleRepresentativeBadge"
+        />
       </main>
     </section>
   </div>
@@ -413,6 +339,10 @@
 import simpleLogoUrl from "./assets/images/simple_logo.png";
 import Sidebar from "./components/layout/Sidebar.vue";
 import Topbar from "./components/layout/Topbar.vue";
+import BadgeModal from "./components/modal/BadgeModal.vue";
+import ProfileModal from "./components/modal/ProfileModal.vue";
+import RecordModal from "./components/modal/RecordModal.vue";
+import SaveToast from "./components/modal/SaveToast.vue";
 import { canvasTools, nav, recentTags } from "./constants/navigation";
 import { decorations, stickerCategories } from "./constants/stickers";
 import { defaultAnalysis } from "./constants/defaultAnalysis";
@@ -420,6 +350,10 @@ import { defaultAnalysis } from "./constants/defaultAnalysis";
 export default {
   name: "App",
   components: {
+    BadgeModal,
+    ProfileModal,
+    RecordModal,
+    SaveToast,
     Sidebar,
     Topbar,
   },
@@ -870,6 +804,10 @@ export default {
       this.navigatePage(this.nav[4]);
       this.closeProfileMenu();
     },
+    openAlbumFromToast() {
+      this.navigatePage("내 앨범");
+      this.toastMessage = "";
+    },
     navIcon(item) {
       const icons = {
         홈: "⌂",
@@ -1170,7 +1108,7 @@ export default {
     apiRecordToSavedCard(record) {
       const cd = record.canvas_data || {};
       const placedItems = cd.placed_items || [];
-      const title = (cd.title || "").trim() || record.anime_title || "제목 없는 기록";
+      const title = (cd.title || "").trim() || record.work_title || record.anime_title || "제목 없는 기록";
       const watchedDate = record.watched_date
         ? record.watched_date.replaceAll("-", ".")
         : "";
@@ -1217,13 +1155,15 @@ export default {
       this.isSaving = true;
 
       try {
+        const recordTitle = (this.currentRecord.title || this.recordForm.title || "").trim() || "제목 없는 기록";
         const payload = {
-          anime_title: this.currentRecord.title || "제목 없는 기록",
+          work_title: recordTitle,
+          anime_title: recordTitle,
           rating: this.currentRecord.rating ?? null,
           watched_date: this.formatInputDate(this.currentRecord.date) || null,
           content: this.currentRecord.memo || "",
           canvas_data: {
-            title: this.currentRecord.title,
+            title: recordTitle,
             placed_items: this.cloneForSave(this.placedItems),
             main_image_src: this.mainImageSrc,
             analysis: this.cloneForSave(this.ai),
