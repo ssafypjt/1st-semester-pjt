@@ -136,9 +136,8 @@ MEDIA_MAX_UPLOAD_BYTES = env('MEDIA_MAX_UPLOAD_MB') * 1024 * 1024
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ── GMS (AI 게이트웨이) ───────────────────────────────
-GMS_API_URL = env('GMS_API_URL', default='')
-GMS_API_KEY = env('GMS_API_KEY', default='')
-GMS_MODEL = env('GMS_MODEL', default='gpt-4o-mini')
+GMS_API_URL = env('GMS_API_URL', default='https://gms.ssafy.io/gmsapi/api.openai.com/v1/chat/completions')
+GMS_API_KEY = env('GMS_KEY', default='')
 GMS_TIMEOUT = env.int('GMS_TIMEOUT', default=30)
 
 # ── DRF ────────────────────────────────────────────

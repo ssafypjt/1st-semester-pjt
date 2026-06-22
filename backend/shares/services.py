@@ -23,9 +23,11 @@ class GMSClient:
     """GMS AI 게이트웨이 클라이언트."""
 
     def __init__(self):
-        self.api_url = getattr(settings, 'GMS_API_URL', '')
+        self.api_url = getattr(settings, 'GMS_API_URL',
+                               'https://gms.ssafy.io/gmsapi/api.openai.com/v1/chat/completions')
         self.api_key = getattr(settings, 'GMS_API_KEY', '')
-        self.model = getattr(settings, 'GMS_MODEL', 'gpt-4o-mini')
+        ## 모델 바꾸는 곳
+        self.model = getattr(settings, 'GMS_MODEL', 'gpt-5-mini') 
         self.timeout = getattr(settings, 'GMS_TIMEOUT', 30)
 
     def _headers(self):
@@ -90,7 +92,7 @@ class GMSClient:
         """
         messages = [
             {
-                'role': 'system',
+                'role': 'developer',
                 'content': SYSTEM_PROMPT,
             },
             {
