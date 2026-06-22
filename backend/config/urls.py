@@ -107,6 +107,7 @@ urlpatterns = [
 
     path('api/albums/', include('albums.urls')),
     path('api/records/', include('records.urls')),
+    path('api/shares/', include('shares.urls')),
     path('', RedirectView.as_view(url='/deokkku/login/', permanent=False), name='home'),
     path('login/', FrontendAppView.as_view(), name='login-page'),
     path('signup/', FrontendAppView.as_view(), name='signup-page'),
