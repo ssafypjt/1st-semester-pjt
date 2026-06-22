@@ -34,7 +34,8 @@ def _load_font(size: int, weight: str = 'normal') -> ImageFont.FreeTypeFont:
     font_path = os.path.join(_FONT_DIR, font_file)
 
     try:
-        return ImageFont.truetype(font_path, size)
+        # NotoSansCJK TTC 컬렉션에서 KR 폰트는 index=1
+        return ImageFont.truetype(font_path, size, index=1)
     except (IOError, OSError):
         logger.warning('폰트 로드 실패: %s — 기본 폰트 사용', font_path)
         try:

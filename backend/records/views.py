@@ -23,10 +23,11 @@ from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnl
 from rest_framework.response import Response
 
 from accounts.models import Follow
-from .models import Comment, Like, Record, RecordImage
+from .models import Comment, Like, Record, RecordImage, StickerAsset, UserSticker
 from .permissions import IsOwnerOrReadOnly
 from .serializers import (CommentSerializer, RecordDetailSerializer,
-                          RecordImageSerializer, RecordListSerializer)
+                          RecordImageSerializer, RecordListSerializer,
+                          StickerAssetSerializer, UserStickerSerializer)
 
 
 class RecordViewSet(viewsets.ModelViewSet):
@@ -203,3 +204,56 @@ def protected_media(request, pk):
         as_attachment=False,
         filename=img.original_name or os.path.basename(img.file.name),
     )
+
+
+# ── 스티커 ──────────────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def my_stickers(request):
+    """유저가 보유한 스티커 목록.
+
+    GET /api/records/stickers/
+    쿼리 파라미터: ?category=sticker (선택)
+    """
+    qs = UserSticker.objects.select_related('sticker').filter(
+        user=request.user, sticker__is_active=True,
+    )
+    category = request.query_params.get('category')
+    if category:
+        qs = qs.filter(sticker__category=category)
+    serializer = UserStickerSerializer(qs, many=True, context={'request': request})
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+def all_stickers(request):
+    """전체 활성 스티커 목록 (카탈로그).
+
+    GET /api/records/stickers/all/
+    """
+    qs = StickerAsset.objects.filter(is_active=True)
+    category = request.query_params.get('category')
+    if category:
+        qs = qs.filter(category=category)
+    serializer = StickerAssetSerializer(qs, many=True, context={'request': request})
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def grant_default_stickers(request):
+    """기본 스티커를 유저에게 부여. 회원가입 후 1회 호출.
+
+    POST /api/records/stickers/init/
+    """
+    defaults = StickerAsset.objects.filter(is_default=True, is_active=True)
+    created = 0
+    for sticker in defaults:
+        _, was_created = UserSticker.objects.get_or_create(
+            user=request.user, sticker=sticker,
+            defaults={'acquired_type': 'default'},
+        )
+        if was_created:
+            created += 1
+    return Response({'granted': created})

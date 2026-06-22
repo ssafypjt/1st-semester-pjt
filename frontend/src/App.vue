@@ -56,6 +56,9 @@
                 <button class="primary small tool-action save-action" type="button" title="저장" @click="saveCard">
                   <span class="save-icon"></span><b>저장</b>
                 </button>
+                <button class="tool-action share-action" type="button" title="공유하기" @click="openShareModal">
+                  <span>✂</span><b>공유하기</b>
+                </button>
               </div>
             </div>
 
@@ -219,6 +222,11 @@
             @open-card="openSavedCard"
             @delete-card="deleteSavedCard"
           />
+
+          <!-- 공유 페이지 안내 (기존 nav 연결 유지) -->
+          <div v-if="activePage === '공유 페이지'" class="share-page-section">
+            <p class="share-page-hint">기록 작성 화면에서 <b>공유하기</b> 버튼을 눌러 공유 카드를 만들 수 있습니다.</p>
+          </div>
         </section>
 
         <record-modal
@@ -257,6 +265,73 @@
           @close="closeBadgeModal"
           @toggle-badge="toggleRepresentativeBadge"
         />
+
+        <!-- ── 공유 카드 모달 ── -->
+        <div v-if="isShareModalOpen" class="share-modal-overlay" @click.self="closeShareModal">
+          <div class="share-modal">
+            <div class="share-modal-header">
+              <div>
+                <small>SHARE PREVIEW</small>
+                <h3>공유 카드 만들기</h3>
+              </div>
+              <button class="share-modal-close" type="button" @click="closeShareModal">✕</button>
+            </div>
+
+            <div class="share-modal-body">
+              <!-- 카드 미리보기 -->
+              <div class="share-preview-card">
+                <div v-if="latestShareCard" class="share-preview-image">
+                  <img :src="latestShareCard.image_url" alt="공유 카드" />
+                </div>
+                <div v-else-if="isGeneratingCard" class="share-preview-placeholder">
+                  <div class="spinner"></div>
+                  <p>AI가 배치 중...</p>
+                </div>
+                <div v-else class="share-preview-placeholder">
+                  <p>아래 버튼을 눌러 공유 카드를 생성하세요.</p>
+                </div>
+
+                <div class="share-preview-info">
+                  <b>{{ currentRecord.title }}</b>
+                  <span v-if="currentRecord.rating" class="share-preview-rating">{{ currentRecord.rating }} / 10</span>
+                  <div v-if="currentRecord.tags && currentRecord.tags.length" class="share-preview-tags">
+                    <span v-for="tag in currentRecord.tags" :key="tag">#{{ tag }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 우측 액션 영역 -->
+              <div class="share-actions">
+                <p v-if="shareCardError" class="share-error">{{ shareCardError }}</p>
+
+                <p v-if="latestShareCard" class="share-result-desc">
+                  {{ latestShareCard.template_name || '이미지 폴라로이드' }}
+                </p>
+                <p v-if="latestShareCard" class="share-result-sub">AI가 자동으로 배치한 공유 카드입니다.</p>
+
+                <div class="share-btn-group">
+                  <button
+                    class="share-btn outline"
+                    type="button"
+                    :disabled="isGeneratingCard"
+                    @click="generateShareCard"
+                  >
+                    {{ latestShareCard ? '다시 만들기' : (isGeneratingCard ? 'AI 생성 중...' : 'AI 카드 생성') }}
+                  </button>
+                  <button
+                    v-if="latestShareCard"
+                    class="share-btn primary"
+                    type="button"
+                    @click="downloadShareImage"
+                  >
+                    이미지 저장
+                  </button>
+                  <button class="share-btn" type="button" @click="closeShareModal">닫기</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </main>
     </section>
   </div>
@@ -345,11 +420,19 @@ export default {
       recentTags,
       canvasTools,
       stickerCategories,
-      decorations,
+      decorations,           // 하드코딩 폴백
+      userStickers: [],      // API에서 가져온 유저 보유 스티커
+      stickersLoaded: false, // API 로드 완료 여부
       placedItems: [],
       ai: defaultAnalysis,
       currentRecordId: null,  // 현재 편집 중인 백엔드 Record ID (null이면 신규)
       isSaving: false,         // 저장 중 중복 요청 방지
+
+      // ── 공유 카드 ──
+      isShareModalOpen: false,   // 공유 모달 열림
+      shareCards: [],            // 생성된 공유 카드 목록
+      isGeneratingCard: false,   // AI 카드 생성 중
+      shareCardError: '',        // 에러 메시지
     };
   },
   computed: {
@@ -364,6 +447,9 @@ export default {
     },
     canUndo() {
       return this.undoHistory.length > 0;
+    },
+    latestShareCard() {
+      return this.shareCards.length > 0 ? this.shareCards[0] : null;
     },
     profilePreviewUrl() {
       return this.profilePreviewLocalUrl || this.currentUser?.profile_image || "";
@@ -405,10 +491,14 @@ export default {
       }));
     },
     visibleDecorations() {
+      // API에서 로드된 유저 스티커가 있으면 우선 사용, 없으면 하드코딩 폴백
+      const source = this.stickersLoaded && this.userStickers.length > 0
+        ? this.userStickers
+        : this.decorations;
       if (this.activeStickerCategory === "전체") {
-        return this.decorations;
+        return source;
       }
-      return this.decorations.filter((item) => item.category === this.activeStickerCategory);
+      return source.filter((item) => item.category === this.activeStickerCategory);
     },
     pageDescription() {
       const descriptions = {
@@ -440,15 +530,34 @@ export default {
     window.addEventListener("pointerup", this.stopPointerWork);
     document.addEventListener("click", this.handleProfileOutsideClick);
     document.addEventListener("keydown", this.handleGlobalKeydown);
+
+    // 새로고침/탭 닫기 시 임시저장 + 확인 다이얼로그
+    this._beforeUnloadHandler = (e) => {
+      if (this.placedItems.length > 0 || this.mainImageSrc) {
+        this._autosaveDraft();
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", this._beforeUnloadHandler);
+    window.addEventListener("pagehide", () => {
+      if (this.placedItems.length > 0 || this.mainImageSrc) {
+        this._autosaveDraft();
+      }
+    });
+
     this.loadRepresentativeBadges();
     this.checkAuth();
-    this.loadSavedCards();
+    this.loadSavedCards().then(() => {
+      this._checkAutosaveRestore();
+    });
   },
   beforeUnmount() {
     window.removeEventListener("pointermove", this.handlePointerMove);
     window.removeEventListener("pointerup", this.stopPointerWork);
     document.removeEventListener("click", this.handleProfileOutsideClick);
     document.removeEventListener("keydown", this.handleGlobalKeydown);
+    window.removeEventListener("beforeunload", this._beforeUnloadHandler);
   },
   methods: {
     async checkAuth() {
@@ -456,6 +565,7 @@ export default {
         this.currentUser = await this.apiFetch("/api/auth/me/");
         this.resetProfileForm();
         this.loadRepresentativeBadges();
+        this.loadUserStickers();
         this.isCheckingAuth = false;
       } catch (error) {
         console.error(error);
@@ -552,7 +662,7 @@ export default {
     },
     getActivityStats() {
       const albums = Array.isArray(this.savedCards) ? this.savedCards.length : 0;
-      const shares = 0;
+      const shares = Array.isArray(this.shareCards) ? this.shareCards.length : 0;
       return {
         records: albums,
         albums,
@@ -825,6 +935,7 @@ export default {
       this.selectedDecorationId = null;
     },
     addDecoration(sticker) {
+      console.log('[DEBUG] addDecoration called:', sticker, 'placedItems before:', this.placedItems.length);
       this.pushUndoState();
       const nextId = Date.now();
       const nextItem = {
@@ -1127,6 +1238,7 @@ export default {
         }
 
         this.toastMessage = "저장되었습니다";
+        this._clearAutosave();
       } catch (error) {
         console.error("저장 실패:", error);
         this.toastMessage = "저장에 실패했습니다. 다시 시도해주세요.";
@@ -1170,6 +1282,154 @@ export default {
       } catch (error) {
         console.error("삭제 실패:", error);
         alert("삭제에 실패했습니다. 다시 시도해주세요.");
+      }
+    },
+
+    // ── 스티커 API ────────────────────────────────────────────────────────
+
+    async loadUserStickers() {
+      try {
+        const data = await this.apiFetch('/api/records/stickers/');
+        // API 응답을 StickerPanel이 기대하는 형태로 변환
+        const categoryMap = {
+          sticker: '스티커', frame: '프레임', bubble: '말풍선',
+          icon: '아이콘', background: '배경', tape: '테이프',
+        };
+        this.userStickers = data.map((item) => ({
+          id: item.sticker.id,
+          icon: item.sticker.emoji_fallback || '⬡',
+          label: item.sticker.name,
+          tone: item.sticker.tone || '',
+          category: categoryMap[item.sticker.category] || '스티커',
+          imageSrc: item.sticker.image_url || null,
+        }));
+        this.stickersLoaded = true;
+      } catch (error) {
+        console.error('스티커 로드 실패:', error);
+        // 실패 시 하드코딩 폴백 유지
+        this.stickersLoaded = false;
+      }
+    },
+
+    // ── 공유 카드 ─────────────────────────────────────────────────────────
+
+    // 공유 모달 열기
+    openShareModal() {
+      if (!this.currentRecordId) {
+        this.toastMessage = '먼저 기록을 저장한 뒤 공유할 수 있습니다.';
+        return;
+      }
+      this.shareCardError = '';
+      this.isShareModalOpen = true;
+      this.loadShareCards(this.currentRecordId);
+    },
+
+    // 공유 모달 닫기
+    closeShareModal() {
+      this.isShareModalOpen = false;
+    },
+
+    // AI 공유 카드 생성
+    async generateShareCard() {
+      if (!this.currentRecordId) {
+        this.shareCardError = '기록을 먼저 저장해주세요.';
+        return;
+      }
+      this.isGeneratingCard = true;
+      this.shareCardError = '';
+      try {
+        const data = await this.apiFetch(
+          `/api/shares/${this.currentRecordId}/generate/`,
+          { method: 'POST', body: JSON.stringify({}) }
+        );
+        this.shareCards.unshift(data);
+      } catch (error) {
+        console.error('공유 카드 생성 실패:', error);
+        this.shareCardError = '카드 생성에 실패했습니다. 다시 시도해주세요.';
+      } finally {
+        this.isGeneratingCard = false;
+      }
+    },
+
+    // 기존 공유 카드 목록 조회
+    async loadShareCards(recordId) {
+      try {
+        const data = await this.apiFetch(`/api/shares/${recordId}/`);
+        this.shareCards = Array.isArray(data) ? data : (data.results || []);
+      } catch (error) {
+        console.error('공유 카드 목록 조회 실패:', error);
+        this.shareCards = [];
+      }
+    },
+    // 공유 카드 이미지를 파일로 다운로드
+    async downloadShareImage() {
+      if (!this.latestShareCard?.image_url) return;
+      try {
+        const resp = await fetch(this.latestShareCard.image_url);
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        const title = (this.currentRecord.title || 'deokkku').replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '_');
+        link.href = url;
+        link.download = `${title}_sharecard.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error('이미지 다운로드 실패:', err);
+        alert('이미지 다운로드에 실패했습니다.');
+      }
+    },
+
+    // ── 임시저장 (새로고침/브라우저 종료 대비) ──
+    _autosaveKey() {
+      return `deokkkuAutosave:${this.currentUser?.email || "guest"}`;
+    },
+    _autosaveDraft() {
+      try {
+        const data = {
+          currentRecord: JSON.parse(JSON.stringify(this.currentRecord)),
+          placedItems: JSON.parse(JSON.stringify(this.placedItems)),
+          mainImageSrc: this.mainImageSrc,
+          currentRecordId: this.currentRecordId,
+          activePage: this.activePage,
+          savedAt: new Date().toISOString(),
+        };
+        localStorage.setItem(this._autosaveKey(), JSON.stringify(data));
+      } catch (e) {
+        console.warn("임시저장 실패:", e);
+      }
+    },
+    _clearAutosave() {
+      try { localStorage.removeItem(this._autosaveKey()); } catch (e) { /* ignore */ }
+    },
+    _checkAutosaveRestore() {
+      try {
+        const raw = localStorage.getItem(this._autosaveKey());
+        if (!raw) return;
+        const saved = JSON.parse(raw);
+        if (!saved?.currentRecord) { this._clearAutosave(); return; }
+
+        // placedItems가 비어있으면 복원할 의미 없음
+        const hasWork = (saved.placedItems?.length > 0) || saved.mainImageSrc;
+        if (!hasWork) { this._clearAutosave(); return; }
+
+        const title = saved.currentRecord.title || "제목 없음";
+        const when = saved.savedAt ? new Date(saved.savedAt).toLocaleString("ko-KR") : "";
+
+        if (confirm(`작성 중이던 기록이 있습니다.\n\n"${title}" (${when})\n\n복원하시겠습니까?\n[확인] 복원  /  [취소] 삭제`)) {
+          this.currentRecord = saved.currentRecord;
+          this.placedItems = Array.isArray(saved.placedItems) ? saved.placedItems : [];
+          this.mainImageSrc = saved.mainImageSrc || "";
+          this.currentRecordId = saved.currentRecordId || null;
+          if (saved.activePage) this.activePage = saved.activePage;
+          this.toastMessage = "임시저장 기록을 복원했습니다.";
+        }
+        this._clearAutosave();
+      } catch (e) {
+        console.warn("임시저장 복원 실패:", e);
+        this._clearAutosave();
       }
     },
   },

@@ -9,7 +9,10 @@ from rest_framework import serializers
 from works.models import Work
 from works.serializers import WorkSerializer
 
-from .models import Comment, Decoration, FavoriteScene, Like, Record, RecordImage
+from .models import (
+    Comment, Decoration, FavoriteScene, Like, Record, RecordImage,
+    StickerAsset, UserSticker,
+)
 
 
 # ── RecordImage ──────────────────────────────────────
@@ -24,6 +27,32 @@ class RecordImageSerializer(serializers.ModelSerializer):
 
     def get_url(self, obj):
         return f'/api/records/uploads/{obj.pk}/'
+
+
+# ── StickerAsset / UserSticker ───────────────────────
+class StickerAssetSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = StickerAsset
+        fields = ['id', 'name', 'category', 'image_url', 'emoji_fallback',
+                  'tone', 'order']
+        read_only_fields = fields
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        if obj.image and request:
+            return request.build_absolute_uri(obj.image.url)
+        return ''
+
+
+class UserStickerSerializer(serializers.ModelSerializer):
+    sticker = StickerAssetSerializer(read_only=True)
+
+    class Meta:
+        model = UserSticker
+        fields = ['id', 'sticker', 'acquired_type', 'acquired_at']
+        read_only_fields = fields
 
 
 # ── Decoration / FavoriteScene ───────────────────────
@@ -78,7 +107,8 @@ class RecordListSerializer(_OwnershipMixin, _LikeMixin, serializers.ModelSeriali
     class Meta:
         model = Record
         fields = ['id', 'user_nickname', 'work', 'work_title', 'work_poster',
-                  'work_type', 'title', 'rating', 'watched_date', 'visibility',
+                  'work_type', 'title', 'rating', 'watched_date', 'content',
+                  'canvas_data', 'visibility',
                   'like_count', 'comment_count', 'created_at', 'is_mine',
                   'is_liked']
 

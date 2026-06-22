@@ -27,7 +27,7 @@ class GMSClient:
                                'https://gms.ssafy.io/gmsapi/api.openai.com/v1/chat/completions')
         self.api_key = getattr(settings, 'GMS_API_KEY', '')
         ## 모델 바꾸는 곳
-        self.model = getattr(settings, 'GMS_MODEL', 'gpt-5-mini') 
+        self.model = getattr(settings, 'GMS_MODEL', 'gpt-4.1-mini')
         self.timeout = getattr(settings, 'GMS_TIMEOUT', 30)
 
     def _headers(self):
@@ -41,7 +41,7 @@ class GMSClient:
 
         Args:
             messages: [{"role": "system"|"user", "content": "..."}]
-            **kwargs: temperature, max_tokens 등 추가 파라미터
+            **kwargs: temperature, max_completion_tokens 등 추가 파라미터
 
         Returns:
             전체 API 응답 dict
@@ -56,7 +56,7 @@ class GMSClient:
             'model': kwargs.get('model', self.model),
             'messages': messages,
             'temperature': kwargs.get('temperature', 0.7),
-            'max_tokens': kwargs.get('max_tokens', 2000),
+            'max_tokens': kwargs.get('max_tokens', 1024),
         }
 
         # JSON 응답을 강제하기 위한 response_format (지원되는 모델에 한해)
@@ -92,7 +92,7 @@ class GMSClient:
         """
         messages = [
             {
-                'role': 'developer',
+                'role': 'system',
                 'content': SYSTEM_PROMPT,
             },
             {
