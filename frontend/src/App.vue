@@ -1578,6 +1578,7 @@ export default {
           this.mainImageSrc = saved.mainImageSrc || "";
           this.currentRecordId = saved.currentRecordId || null;
           this.activePage = "기록 작성";
+          this.$nextTick(() => { this._dirty = true; });
         }
         this._clearAutosave();
       } catch (e) {

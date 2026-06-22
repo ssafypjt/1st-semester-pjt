@@ -55,8 +55,12 @@ def generate_share_card(request, record_id):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    # 2-b) 사용자 다이어리 스티커 (canvas_data.placedItems)
+    canvas_data = record.canvas_data or {}
+    placed_items = canvas_data.get('placedItems', []) if isinstance(canvas_data, dict) else []
+
     # 3) AI 프롬프트 조립 & 호출
-    prompt = build_card_prompt(record, templates)
+    prompt = build_card_prompt(record, templates, placed_items=placed_items)
 
     try:
         client = GMSClient()
@@ -84,10 +88,17 @@ def generate_share_card(request, record_id):
         background_url = template.background_image if template else ''
         poster_url = record.work.poster_image or ''
 
+        # 스티커 중 이미지 URL이 있는 것만 필터
+        sticker_items = [
+            item for item in placed_items
+            if item.get('type') == 'sticker' and item.get('src')
+        ]
+
         image_buf = render_card(
             layout_data,
             poster_url=poster_url,
             background_url=background_url,
+            stickers=sticker_items,
         )
     except Exception as e:
         logger.error('공유 카드 렌더링 실패 (record=%s): %s', record_id, e)

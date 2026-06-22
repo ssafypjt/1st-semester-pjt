@@ -1,40 +1,57 @@
 """
-공유 카드 이미지 렌더러.
+공유 카드 이미지 렌더러 v2.
 
-AI가 반환한 layout_data JSON을 Pillow로 실제 이미지로 렌더링한다.
-카드 크기: 1080 x 1920 (인스타 스토리 비율, 9:16)
+4존 구조로 카드를 렌더링한다:
+  Zone 1 — 헤더: 날짜 + 덕꾸 로고
+  Zone 2 — 콜라주: 포스터 이미지 + 사용자 스티커/장식
+  Zone 3 — 메모: 감상문 (20자 이하 원문, 초과 시 AI 발췌)
+  Zone 4 — 정보: 작품 제목 + 별점 + 태그
+
+카드 크기: 1080 × 1920 (인스타 스토리 비율, 9:16)
 """
 import io
 import logging
 import os
-import tempfile
 from urllib.request import urlopen
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 logger = logging.getLogger(__name__)
 
-# 카드 기본 사이즈
+# ─── 카드 기본 사이즈 ────────────────────────────────────
 CARD_WIDTH = 1080
 CARD_HEIGHT = 1920
 
-# 기본 폰트 (시스템에 없으면 Pillow 기본 폰트 사용)
-# 배포 시 프로젝트에 폰트 파일을 포함하거나 설정으로 경로를 지정
+# ─── 4존 기본 영역 (y_start, y_end) ─────────────────────
+ZONE_HEADER = (0, 140)          # Zone 1
+ZONE_COLLAGE = (140, 1100)      # Zone 2
+ZONE_MEMO = (1100, 1500)        # Zone 3
+ZONE_INFO = (1500, 1920)        # Zone 4
+
+# ─── 리소스 경로 ─────────────────────────────────────────
 _FONT_DIR = os.path.join(os.path.dirname(__file__), 'fonts')
+_ASSET_DIR = os.path.join(os.path.dirname(__file__), 'assets')
+_LOGO_PATH = os.path.join(_ASSET_DIR, 'simple_logo.png')
+
+
+# ═════════════════════════════════════════════════════════
+#  폰트
+# ═════════════════════════════════════════════════════════
+
+# NOTE: 향후 폰트 교체 시 아래 font_map 의 파일명만 변경하면 됩니다.
+# 예) 손글씨 폰트 적용: 'normal': 'NanumPenScript-Regular.ttf'
+_FONT_MAP = {
+    'bold': 'NotoSansKR-Bold.ttf',
+    'normal': 'NotoSansKR-Regular.ttf',
+}
 
 
 def _load_font(size: int, weight: str = 'normal') -> ImageFont.FreeTypeFont:
     """폰트를 로드한다. 실패 시 Pillow 기본 폰트 반환."""
-    # TODO: 프로젝트에 포함된 한글 폰트 경로로 교체
-    font_map = {
-        'bold': 'NotoSansKR-Bold.ttf',
-        'normal': 'NotoSansKR-Regular.ttf',
-    }
-    font_file = font_map.get(weight, font_map['normal'])
+    font_file = _FONT_MAP.get(weight, _FONT_MAP['normal'])
     font_path = os.path.join(_FONT_DIR, font_file)
-
     try:
-        # NotoSansCJK TTC 컬렉션에서 KR 폰트는 index=1
+        # NotoSansCJK TTC 컬렉션: index=1 → KR
         return ImageFont.truetype(font_path, size, index=1)
     except (IOError, OSError):
         logger.warning('폰트 로드 실패: %s — 기본 폰트 사용', font_path)
@@ -44,8 +61,14 @@ def _load_font(size: int, weight: str = 'normal') -> ImageFont.FreeTypeFont:
             return ImageFont.load_default()
 
 
+# ═════════════════════════════════════════════════════════
+#  유틸리티
+# ═════════════════════════════════════════════════════════
+
 def _download_image(url: str) -> Image.Image | None:
     """URL에서 이미지를 다운로드하여 PIL Image로 반환."""
+    if not url:
+        return None
     try:
         with urlopen(url, timeout=10) as resp:
             data = resp.read()
@@ -55,122 +78,24 @@ def _download_image(url: str) -> Image.Image | None:
         return None
 
 
-def render_card(layout_data: dict, poster_url: str = '',
-                background_url: str = '') -> io.BytesIO:
-    """layout_data를 기반으로 공유 카드 이미지를 렌더링한다.
-
-    Args:
-        layout_data: AI가 반환한 레이아웃 JSON
-        poster_url: 작품 포스터 이미지 URL
-        background_url: 카드 템플릿 배경 이미지 URL
-
-    Returns:
-        PNG 이미지가 담긴 BytesIO 객체
-    """
-    # 1) 배경 생성
-    bg_info = layout_data.get('background', {})
-    bg_color = bg_info.get('color', '#1a1a2e') if isinstance(bg_info, dict) else '#1a1a2e'
-    canvas = Image.new('RGBA', (CARD_WIDTH, CARD_HEIGHT), bg_color)
-
-    # 2) 배경 이미지 적용 (템플릿 배경)
-    if background_url:
-        bg_img = _download_image(background_url)
-        if bg_img:
-            bg_img = bg_img.resize((CARD_WIDTH, CARD_HEIGHT), Image.LANCZOS)
-            canvas = Image.alpha_composite(canvas, bg_img)
-
-    # 3) 오버레이 투명도 적용
-    overlay_opacity = 0.0
-    if isinstance(bg_info, dict):
-        overlay_opacity = bg_info.get('overlay_opacity', 0.0)
-    if overlay_opacity > 0:
-        overlay = Image.new('RGBA', (CARD_WIDTH, CARD_HEIGHT),
-                            (0, 0, 0, int(255 * overlay_opacity)))
-        canvas = Image.alpha_composite(canvas, overlay)
-
-    draw = ImageDraw.Draw(canvas)
-
-    # 4) 요소(elements) 순서대로 렌더링
-    elements = layout_data.get('elements', [])
-    for elem in elements:
-        _render_element(canvas, draw, elem, poster_url=poster_url)
-
-    # 5) RGBA → RGB 변환 후 PNG로 저장
-    final = canvas.convert('RGB')
-    buf = io.BytesIO()
-    final.save(buf, format='PNG', quality=95)
-    buf.seek(0)
-    return buf
-
-
-def _render_element(canvas: Image.Image, draw: ImageDraw.Draw,
-                    elem: dict, poster_url: str = ''):
-    """개별 요소를 캔버스에 렌더링한다."""
-    elem_type = elem.get('type', '')
-    x = int(elem.get('x', 0))
-    y = int(elem.get('y', 0))
-    w = int(elem.get('width', 0))
-    h = int(elem.get('height', 0))
-    style = elem.get('style', {})
-
-    if elem_type == 'image':
-        # 포스터 이미지 또는 지정된 이미지 URL
-        img_url = elem.get('content', '') or poster_url
-        if img_url:
-            img = _download_image(img_url)
-            if img and w > 0 and h > 0:
-                img = img.resize((w, h), Image.LANCZOS)
-                canvas.paste(img, (x, y), img if img.mode == 'RGBA' else None)
-
-    elif elem_type in ('text', 'rating', 'date', 'badge'):
-        content = str(elem.get('content', ''))
-        if not content:
-            return
-
-        font_size = int(style.get('font_size', 24))
-        font_weight = style.get('font_weight', 'normal')
-        color = style.get('color', '#ffffff')
-        text_align = style.get('text_align', 'left')
-
-        font = _load_font(font_size, font_weight)
-
-        # 텍스트 영역 내에서 줄바꿈 처리
-        if w > 0:
-            lines = _wrap_text(content, font, w)
-        else:
-            lines = [content]
-
-        line_height = int(style.get('line_height', font_size * 1.4))
-        for i, line in enumerate(lines):
-            ly = y + i * line_height
-            if ly > CARD_HEIGHT:
-                break
-
-            if text_align == 'center' and w > 0:
-                bbox = font.getbbox(line)
-                tw = bbox[2] - bbox[0]
-                lx = x + (w - tw) // 2
-            elif text_align == 'right' and w > 0:
-                bbox = font.getbbox(line)
-                tw = bbox[2] - bbox[0]
-                lx = x + w - tw
-            else:
-                lx = x
-
-            draw.text((lx, ly), line, fill=color, font=font)
+def _load_local_image(path: str) -> Image.Image | None:
+    """로컬 파일에서 이미지를 로드."""
+    try:
+        return Image.open(path).convert('RGBA')
+    except Exception as e:
+        logger.warning('로컬 이미지 로드 실패: %s — %s', path, e)
+        return None
 
 
 def _wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list[str]:
-    """텍스트를 max_width에 맞게 줄바꿈한다."""
+    """텍스트를 max_width에 맞게 줄바꿈한다 (한글 글자 단위)."""
     lines = []
     for paragraph in text.split('\n'):
         if not paragraph.strip():
             lines.append('')
             continue
-
-        words = list(paragraph)  # 한글은 글자 단위로 분리
         current_line = ''
-        for char in words:
+        for char in paragraph:
             test = current_line + char
             bbox = font.getbbox(test)
             if bbox[2] - bbox[0] <= max_width:
@@ -181,5 +106,318 @@ def _wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list[
                 current_line = char
         if current_line:
             lines.append(current_line)
-
     return lines or ['']
+
+
+def _draw_text_block(draw, text, x, y, w, font, color='#333333',
+                     align='left', max_lines=None):
+    """텍스트 블록을 그린다. 반환: 실제 사용한 높이."""
+    lines = _wrap_text(text, font, w)
+    if max_lines:
+        lines = lines[:max_lines]
+    line_h = int(font.size * 1.5)
+    for i, line in enumerate(lines):
+        ly = y + i * line_h
+        if ly + font.size > CARD_HEIGHT:
+            break
+        if align == 'center':
+            bbox = font.getbbox(line)
+            tw = bbox[2] - bbox[0]
+            lx = x + (w - tw) // 2
+        elif align == 'right':
+            bbox = font.getbbox(line)
+            tw = bbox[2] - bbox[0]
+            lx = x + w - tw
+        else:
+            lx = x
+        draw.text((lx, ly), line, fill=color, font=font)
+    return len(lines) * line_h
+
+
+def _draw_rounded_rect(draw, xy, radius, fill=None, outline=None, width=1):
+    """둥근 모서리 사각형."""
+    x0, y0, x1, y1 = xy
+    draw.rounded_rectangle(xy, radius=radius, fill=fill, outline=outline, width=width)
+
+
+# ═════════════════════════════════════════════════════════
+#  메인 렌더 함수
+# ═════════════════════════════════════════════════════════
+
+def render_card(layout_data: dict, poster_url: str = '',
+                background_url: str = '', stickers: list = None) -> io.BytesIO:
+    """layout_data + 사용자 스티커로 공유 카드를 렌더링한다.
+
+    Args:
+        layout_data: AI가 반환한 레이아웃 JSON
+        poster_url: 작품 포스터 이미지 URL
+        background_url: 카드 템플릿 배경 이미지 URL
+        stickers: 사용자 다이어리의 placedItems 리스트
+
+    Returns:
+        PNG 이미지가 담긴 BytesIO 객체
+    """
+    stickers = stickers or []
+
+    # ── 1) 배경 ──────────────────────────────────────────
+    bg = layout_data.get('background', {})
+    bg_color = bg.get('color', '#FDF5E6') if isinstance(bg, dict) else '#FDF5E6'
+    canvas = Image.new('RGBA', (CARD_WIDTH, CARD_HEIGHT), bg_color)
+
+    if background_url:
+        bg_img = _download_image(background_url)
+        if bg_img:
+            bg_img = bg_img.resize((CARD_WIDTH, CARD_HEIGHT), Image.LANCZOS)
+            canvas = Image.alpha_composite(canvas, bg_img)
+
+    # 오버레이
+    overlay_opacity = bg.get('overlay_opacity', 0.0) if isinstance(bg, dict) else 0.0
+    if overlay_opacity > 0:
+        overlay = Image.new('RGBA', (CARD_WIDTH, CARD_HEIGHT),
+                            (255, 255, 255, int(255 * overlay_opacity)))
+        canvas = Image.alpha_composite(canvas, overlay)
+
+    draw = ImageDraw.Draw(canvas)
+
+    # ── 2) Zone 1: 헤더 (날짜 + 덕꾸 로고) ──────────────
+    _render_header(canvas, draw, layout_data)
+
+    # ── 3) Zone 2: 콜라주 (포스터 + 스티커) ──────────────
+    _render_collage(canvas, draw, layout_data, poster_url, stickers)
+
+    # ── 4) Zone 3: 메모 (감상문) ─────────────────────────
+    _render_memo(canvas, draw, layout_data)
+
+    # ── 5) Zone 4: 정보 (제목 + 별점 + 태그) ────────────
+    _render_info(canvas, draw, layout_data)
+
+    # ── 6) 최종 출력 ────────────────────────────────────
+    final = canvas.convert('RGB')
+    buf = io.BytesIO()
+    final.save(buf, format='PNG', quality=95)
+    buf.seek(0)
+    return buf
+
+
+# ═════════════════════════════════════════════════════════
+#  Zone 1: 헤더
+# ═════════════════════════════════════════════════════════
+
+def _render_header(canvas, draw, layout_data):
+    """날짜 (좌측) + 덕꾸 로고 (우측)."""
+    header = layout_data.get('header', {})
+    date_text = header.get('date', '')
+    text_color = header.get('text_color', '#8B7D6B')
+
+    # 날짜
+    if date_text:
+        font = _load_font(36, 'normal')
+        draw.text((60, 50), date_text, fill=text_color, font=font)
+
+    # 덕꾸 로고
+    logo = _load_local_image(_LOGO_PATH)
+    if logo:
+        # 로고를 높이 60px에 맞게 리사이즈
+        ratio = 60 / logo.height
+        logo_w = int(logo.width * ratio)
+        logo = logo.resize((logo_w, 60), Image.LANCZOS)
+        canvas.paste(logo, (CARD_WIDTH - logo_w - 60, 40), logo)
+
+
+# ═════════════════════════════════════════════════════════
+#  Zone 2: 콜라주
+# ═════════════════════════════════════════════════════════
+
+def _render_collage(canvas, draw, layout_data, poster_url, stickers):
+    """포스터 이미지 + 사용자 스티커 배치."""
+    collage = layout_data.get('collage', {})
+
+    # ── 포스터 ────────────────────────────────────────
+    poster = collage.get('poster', {})
+    px = int(poster.get('x', 190))
+    py = int(poster.get('y', 200))
+    pw = int(poster.get('width', 700))
+    ph = int(poster.get('height', 700))
+    frame_style = poster.get('frame', 'none')  # none, polaroid, rounded, shadow
+
+    poster_img = _download_image(poster_url)
+    if poster_img:
+        poster_img = poster_img.resize((pw, ph), Image.LANCZOS)
+
+        if frame_style == 'polaroid':
+            _paste_polaroid(canvas, poster_img, px, py, pw, ph)
+        elif frame_style == 'rounded':
+            _paste_rounded(canvas, poster_img, px, py, pw, ph)
+        elif frame_style == 'shadow':
+            _paste_with_shadow(canvas, poster_img, px, py)
+        else:
+            canvas.paste(poster_img, (px, py), poster_img)
+
+    # ── 캐릭터명 / 작품명 (포스터 아래) ──────────────
+    poster_label = collage.get('label', '')
+    if poster_label:
+        font = _load_font(32, 'normal')
+        label_color = collage.get('label_color', '#555555')
+        bbox = font.getbbox(poster_label)
+        tw = bbox[2] - bbox[0]
+        lx = px + (pw - tw) // 2
+        ly = py + ph + 16
+        draw.text((lx, ly), poster_label, fill=label_color, font=font)
+
+    # ── 사용자 스티커 (다이어리 placedItems 반영) ─────
+    for sticker in stickers:
+        _render_sticker(canvas, sticker)
+
+
+def _paste_polaroid(canvas, img, x, y, w, h):
+    """폴라로이드 프레임 스타일로 이미지를 붙인다."""
+    padding = 20
+    bottom_padding = 60
+    frame_w = w + padding * 2
+    frame_h = h + padding + bottom_padding
+    frame = Image.new('RGBA', (frame_w, frame_h), (255, 255, 255, 255))
+    frame.paste(img, (padding, padding), img if img.mode == 'RGBA' else None)
+    # 약간 회전
+    frame = frame.rotate(-3, expand=True, fillcolor=(0, 0, 0, 0))
+    canvas.paste(frame, (x - padding, y - padding), frame)
+
+
+def _paste_rounded(canvas, img, x, y, w, h, radius=24):
+    """둥근 모서리로 이미지를 잘라서 붙인다."""
+    mask = Image.new('L', (w, h), 0)
+    mask_draw = ImageDraw.Draw(mask)
+    mask_draw.rounded_rectangle([(0, 0), (w, h)], radius=radius, fill=255)
+    img.putalpha(mask)
+    canvas.paste(img, (x, y), img)
+
+
+def _paste_with_shadow(canvas, img, x, y, offset=8, blur=12):
+    """그림자 효과로 이미지를 붙인다."""
+    shadow = Image.new('RGBA', (img.width + blur * 2, img.height + blur * 2), (0, 0, 0, 0))
+    shadow_base = Image.new('RGBA', img.size, (0, 0, 0, 80))
+    shadow.paste(shadow_base, (blur, blur))
+    shadow = shadow.filter(ImageFilter.GaussianBlur(blur))
+    canvas.paste(shadow, (x + offset - blur, y + offset - blur), shadow)
+    canvas.paste(img, (x, y), img if img.mode == 'RGBA' else None)
+
+
+def _render_sticker(canvas, sticker_data):
+    """사용자 다이어리의 스티커 하나를 카드에 배치.
+
+    sticker_data 예시:
+    {
+      "type": "sticker",
+      "src": "http://...sticker.png",
+      "x": 120, "y": 300,
+      "width": 80, "height": 80,
+      "rotation": 0
+    }
+    다이어리 캔버스(~640px)를 카드(1080px)로 스케일 변환한다.
+    """
+    src = sticker_data.get('src', '')
+    if not src:
+        return
+
+    # 다이어리 캔버스 → 카드 크기 비율 (대략 1.6~1.7배)
+    # 다이어리 캔버스 너비를 ~640px로 가정
+    DIARY_CANVAS_WIDTH = 640
+    scale = CARD_WIDTH / DIARY_CANVAS_WIDTH
+
+    sx = int(sticker_data.get('x', 0) * scale)
+    # 콜라주 존 시작점을 오프셋으로 추가
+    sy = int(sticker_data.get('y', 0) * scale) + ZONE_COLLAGE[0]
+    sw = int(sticker_data.get('width', 60) * scale)
+    sh = int(sticker_data.get('height', 60) * scale)
+
+    img = _download_image(src)
+    if not img:
+        return
+
+    img = img.resize((sw, sh), Image.LANCZOS)
+
+    rotation = sticker_data.get('rotation', 0)
+    if rotation:
+        img = img.rotate(-rotation, expand=True, fillcolor=(0, 0, 0, 0))
+
+    canvas.paste(img, (sx, sy), img)
+
+
+# ═════════════════════════════════════════════════════════
+#  Zone 3: 메모
+# ═════════════════════════════════════════════════════════
+
+def _render_memo(canvas, draw, layout_data):
+    """감상문 영역. 메모지 느낌의 배경 위에 텍스트 배치."""
+    memo = layout_data.get('memo', {})
+    text = memo.get('text', '')
+    if not text:
+        return
+
+    # 메모 영역 좌표
+    mx = int(memo.get('x', 100))
+    my = int(memo.get('y', ZONE_MEMO[0] + 30))
+    mw = int(memo.get('width', 880))
+    mh = int(memo.get('height', 340))
+    bg_color = memo.get('bg_color', '#FFFFFF')
+    text_color = memo.get('text_color', '#444444')
+    border_color = memo.get('border_color', None)
+
+    # 메모지 배경
+    _draw_rounded_rect(draw, (mx, my, mx + mw, my + mh),
+                       radius=12, fill=bg_color,
+                       outline=border_color, width=2 if border_color else 0)
+
+    # 텍스트
+    # NOTE: 향후 손글씨 폰트 적용 시 여기의 weight를 변경
+    font_size = int(memo.get('font_size', 28))
+    font = _load_font(font_size, 'normal')
+    padding = 30
+    _draw_text_block(draw, text, mx + padding, my + padding,
+                     mw - padding * 2, font, color=text_color,
+                     align='left', max_lines=8)
+
+
+# ═════════════════════════════════════════════════════════
+#  Zone 4: 정보
+# ═════════════════════════════════════════════════════════
+
+def _render_info(canvas, draw, layout_data):
+    """작품 제목 + 별점 + 태그."""
+    info = layout_data.get('info', {})
+    text_color = info.get('text_color', '#333333')
+    accent_color = info.get('accent_color', '#7C3AED')
+
+    center_x = CARD_WIDTH // 2
+    y_cursor = ZONE_INFO[0] + 30
+
+    # 작품 제목
+    title = info.get('title', '')
+    if title:
+        font = _load_font(44, 'bold')
+        bbox = font.getbbox(title)
+        tw = bbox[2] - bbox[0]
+        draw.text((center_x - tw // 2, y_cursor), title,
+                  fill=text_color, font=font)
+        y_cursor += 70
+
+    # 별점
+    rating = info.get('rating', '')
+    if rating:
+        font = _load_font(52, 'bold')
+        rating_str = str(rating)
+        bbox = font.getbbox(rating_str)
+        tw = bbox[2] - bbox[0]
+        draw.text((center_x - tw // 2, y_cursor), rating_str,
+                  fill=accent_color, font=font)
+        y_cursor += 80
+
+    # 태그
+    tags = info.get('tags', [])
+    if tags:
+        font = _load_font(26, 'normal')
+        tag_str = '  '.join(f'#{t}' for t in tags)
+        bbox = font.getbbox(tag_str)
+        tw = bbox[2] - bbox[0]
+        tag_color = info.get('tag_color', '#888888')
+        draw.text((center_x - tw // 2, y_cursor), tag_str,
+                  fill=tag_color, font=font)
