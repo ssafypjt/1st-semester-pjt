@@ -11,47 +11,28 @@
     </div>
 
     <section v-if="!isCheckingAuth && currentUser" class="workspace">
-      <aside class="sidebar">
-        <button class="brand deokkku-mini" type="button" @click="activePage = '홈'" aria-label="Deokkku">
-          <img class="simple-logo-img" :src="simpleLogoUrl" alt="Deokkku 로고" />
-          <span>덕꾸</span>
-          <small>Deokkku</small>
-        </button>
-        <p>내가 사랑하는 애니메이션을<br />기록하고, 모으고, 공유하는 공간</p>
-        <nav>
-          <button
-            v-for="item in nav"
-            :key="item"
-            :class="{ active: activePage === item }"
-            type="button"
-            @click="navigatePage(item)"
-          >
-            <span>{{ navIcon(item) }}</span>{{ item }}
-          </button>
-        </nav>
-        <div class="today">
-          <b>오늘의 한 마디</b>
-          <p>좋아하는 작품을 기록하는 시간이 내 취향을 더 선명하게 만듭니다.</p>
-        </div>
-        <div class="tags">
-          <b>최근 태그</b>
-          <span v-for="tag in recentTags" :key="tag">#{{ tag }}</span>
-        </div>
-      </aside>
+      <sidebar
+        :simple-logo-url="simpleLogoUrl"
+        :nav="nav"
+        :active-page="activePage"
+        :recent-tags="recentTags"
+        :nav-icon="navIcon"
+        @navigate="navigatePage"
+      />
 
       <main class="main">
-        <header class="topbar">
-          <label class="search">
-            <input v-model="query" placeholder="애니 제목, 캐릭터, 태그로 검색해보세요" />
-            <span>⌕</span>
-          </label>
-          <div class="top-actions">
-            <button class="primary" type="button" @click="openRecordModal">＋ 새 기록</button>
-            <button class="icon-btn" type="button" title="알림">!</button>
-            <button v-if="!isCheckingAuth && currentUser" class="logout-btn" type="button" :disabled="isLoggingOut" @click="logout">로그아웃</button>
-            <button class="avatar" type="button"></button>
-          </div>
-        </header>
+        <topbar
+          ref="profileMenu"
+          v-model:query="query"
+          :current-user="currentUser"
+          :show-profile-menu="showProfileMenu"
+          :profile-initial="profileInitial"
+          :activity-stats="activityStats"
+          @open-record="openRecordModal"
+          @toggle-profile="toggleProfileMenu"
+          @view-profile="openProfilePageFromDropdown"
+          @logout="logout"
+        />
 
         <div v-if="activePage === '기록 작성'" class="content-grid">
           <section class="editor-zone">
@@ -172,49 +153,15 @@
           </section>
 
           <aside class="right-rail">
-            <section class="panel-card">
-              <header>
-                <h3>스티커샵</h3>
-                <span>클릭해서 붙이기</span>
-              </header>
-              <div class="subtabs">
-                <button
-                  v-for="category in stickerCategories"
-                  :key="category"
-                  :class="{ active: activeStickerCategory === category }"
-                  type="button"
-                  @click="activeStickerCategory = category"
-                >
-                  {{ category }}
-                </button>
-              </div>
-              <div class="sticker-grid">
-                <button
-                  v-for="sticker in visibleDecorations"
-                  :key="sticker.id || `${sticker.icon}-${sticker.tone}`"
-                  :class="sticker.tone"
-                  type="button"
-                  @click="addDecoration(sticker)"
-                >
-                  <img v-if="sticker.imageSrc" :src="sticker.imageSrc" :alt="sticker.label || '스티커'" />
-                  <span v-else>{{ sticker.icon }}</span>
-                </button>
-              </div>
-              <p class="shop-help">스티커, 프레임, 말풍선을 붙인 뒤 드래그로 이동할 수 있어요.</p>
-            </section>
+            <sticker-panel
+              :sticker-categories="stickerCategories"
+              :active-sticker-category="activeStickerCategory"
+              :visible-decorations="visibleDecorations"
+              @change-category="activeStickerCategory = $event"
+              @add-decoration="addDecoration"
+            />
 
-            <section class="panel-card">
-              <header>
-                <h3>이미지 첨부</h3>
-                <span>내 이미지 붙이기</span>
-              </header>
-              <label class="upload-drop">
-                <input type="file" accept="image/*" @change="handleImageUpload" />
-                <span>＋</span>
-                <b>이미지 선택</b>
-                <small>선택한 이미지를 다이어리 위에 붙이고 드래그로 이동할 수 있어요.</small>
-              </label>
-            </section>
+            <image-upload-panel @image-upload="handleImageUpload" />
 
             <section class="panel-card">
               <header>
@@ -236,7 +183,18 @@
               <p>{{ pageDescription }}</p>
             </div>
           </header>
-          <div class="detail-grid">
+          <my-page-dashboard
+            v-if="activePage === nav[4]"
+            :current-user="currentUser"
+            :profile-preview-url="profilePreviewUrl"
+            :profile-initial="profileInitial"
+            :joined-date="currentUser?.created_at ? formatProfileDate(currentUser.created_at) : ''"
+            :profile-stats="profileStats"
+            @edit-profile="openProfileModal"
+            @open-badges="openBadgeModal"
+          />
+
+          <div v-if="activePage !== nav[4]" class="detail-grid">
             <article
               v-for="card in detailCards"
               :key="card.title"
@@ -248,147 +206,97 @@
               @keydown.enter.prevent="card.action && navigatePage(card.action)"
               @keydown.space.prevent="card.action && navigatePage(card.action)"
             >
+              <span v-if="card.icon" class="detail-card-icon">{{ card.icon }}</span>
               <b>{{ card.title }}</b>
               <p>{{ card.body }}</p>
             </article>
           </div>
-          <div v-if="activePage === '내 앨범'" class="saved-album-grid">
-            <article
-              v-for="card in savedCards"
-              :key="card.id"
-              class="saved-card"
-              role="button"
-              tabindex="0"
-              title="저장된 기록 열기"
-              @click="openSavedCard(card)"
-              @keydown.enter.prevent="openSavedCard(card)"
-              @keydown.space.prevent="openSavedCard(card)"
-            >
-              <button class="saved-card-delete" type="button" title="삭제" aria-label="삭제" @click.stop="deleteSavedCard(card.id)">
-                ×
-              </button>
-              <small>{{ card.date }}</small>
-              <h3>{{ card.title }}</h3>
-              <p>{{ card.rating }} / 10 {{ stars(card.rating) }}</p>
-              <span>스티커 {{ card.stickerCount || 0 }}개 · 메모 {{ card.memoCount || 0 }}개 저장됨</span>
-            </article>
-            <article v-if="savedCards.length === 0" class="saved-empty">
-              <b>아직 저장한 카드가 없어요</b>
-              <p>기록 작성에서 다이어리를 꾸민 뒤 저장을 누르면 여기에 보관됩니다.</p>
-            </article>
-          </div>
+          <saved-album-grid
+            v-if="activePage === '내 앨범'"
+            :saved-cards="savedCards"
+            :stars="stars"
+            @open-card="openSavedCard"
+            @delete-card="deleteSavedCard"
+          />
         </section>
 
-        <section v-if="activePage === '기록 작성' || activePage === '공유 페이지'" class="share-showcase">
-          <div class="panel-head">
-            <div>
-              <h3>모바일 공유 스타일</h3>
-              <p>앱에서 만든 다이어리 기록을 스토리, 피드, 링크 카드, 이미지 저장용으로 미리 봅니다.</p>
-            </div>
-            <div class="share-tabs">
-              <button v-for="mode in shareModes" :key="mode.id" :class="{ active: shareMode === mode.id }" type="button" @click="shareMode = mode.id">
-                {{ mode.label }}
-              </button>
-            </div>
-          </div>
-          <div class="share-preview-board">
-            <article class="phone-preview" :class="shareMode">
-              <div class="phone-top"><span></span><b>ANILOG</b><span></span></div>
-              <div class="mobile-card">
-                <small>{{ selectedView.date }}</small>
-                <h4>{{ selectedView.title }}</h4>
-                <div class="mobile-art">
-                  <img v-if="mainImageSrc" :src="mainImageSrc" alt="" />
-                  <span v-else class="empty-image-slot">
-                    <strong>＋</strong>
-                    <em>이미지</em>
-                  </span>
-                  <i v-for="item in placedItems.slice(0, 6)" :key="item.id">
-                    <span v-if="item.type === 'text'">T</span>
-                    <img v-else-if="item.imageSrc" :src="item.imageSrc" alt="" />
-                    <span v-else>{{ item.icon }}</span>
-                  </i>
-                </div>
-                <p>{{ selectedView.memo }}</p>
-                <strong>{{ selectedView.rating }} / 10 {{ stars(selectedView.rating) }}</strong>
-              </div>
-              <div class="phone-actions">
-                <button type="button">이미지 저장</button>
-                <button type="button">링크 복사</button>
-                <button type="button">스토리 저장</button>
-              </div>
-            </article>
-            <article class="share-note">
-              <b>공유 형식</b>
-              <p>스토리형, 피드형, 링크형 카드 구성을 기존 화면처럼 유지했습니다.</p>
-              <div class="share-icons"><span>◎</span><span>K</span><span>↗</span><span>↓</span></div>
-            </article>
-          </div>
-        </section>
+        <record-modal
+          v-if="isRecordModalOpen"
+          v-model:record-form="recordForm"
+          :mode="recordModalMode"
+          :stars="stars"
+          @close="closeRecordModal"
+          @submit="createBlankRecord"
+        />
 
-        <div v-if="isRecordModalOpen" class="modal-backdrop" @click.self="closeRecordModal">
-          <section class="record-modal" role="dialog" aria-modal="true" aria-label="기록 정보 수정">
-            <header>
-              <h3>{{ recordModalMode === 'edit' ? '기록 정보 수정' : '새 기록 만들기' }}</h3>
-              <button type="button" @click="closeRecordModal">×</button>
-            </header>
-            <label>
-              <span>작품명</span>
-              <input v-model="recordForm.title" placeholder="애니메이션 제목을 입력하세요" />
-            </label>
-            <label>
-              <span>감상 날짜</span>
-              <input type="date" v-model="recordForm.date" />
-            </label>
-            <label>
-              <span>별점</span>
-              <input type="range" min="0" max="10" step="0.5" v-model.number="recordForm.rating" />
-              <b>{{ recordForm.rating }} / 10 {{ stars(recordForm.rating) }}</b>
-            </label>
-            <div class="modal-actions">
-              <button type="button" @click="closeRecordModal">취소</button>
-              <button class="primary" type="button" @click="createBlankRecord">
-                {{ recordModalMode === 'edit' ? '수정하기' : '시작하기' }}
-              </button>
-            </div>
-          </section>
-        </div>
+        <save-toast
+          v-if="toastMessage"
+          :message="toastMessage"
+          @close="toastMessage = ''"
+          @view-album="openAlbumFromToast"
+        />
 
-        <div v-if="toastMessage" class="save-popup-backdrop" @click.self="toastMessage = ''">
-          <section class="save-popup" role="alertdialog" aria-modal="true" aria-label="저장 완료 안내">
-            <strong>{{ toastMessage }}</strong>
-            <p>내 앨범에서 저장한 다이어리 카드를 확인할 수 있어요.</p>
-            <div>
-              <button type="button" @click="toastMessage = ''">확인</button>
-              <button class="primary" type="button" @click="navigatePage('내 앨범'); toastMessage = ''">내 앨범 보기</button>
-            </div>
-          </section>
-        </div>
+        <profile-modal
+          v-if="isProfileModalOpen"
+          v-model:profile-form="profileForm"
+          :profile-preview-url="profilePreviewUrl"
+          :profile-initial="profileInitial"
+          :profile-status="profileStatus"
+          :current-user="currentUser"
+          :is-profile-saving="isProfileSaving"
+          @close="closeProfileModal"
+          @submit="updateProfile"
+          @image-change="handleProfileImageChange"
+        />
+
+        <badge-modal
+          v-if="isBadgeModalOpen"
+          :available-badges="availableBadges"
+          :selected-badge-ids="selectedBadgeIds"
+          @close="closeBadgeModal"
+          @toggle-badge="toggleRepresentativeBadge"
+        />
       </main>
     </section>
   </div>
 </template>
 
 <script>
-import guineapigUrl from "./assets/images/guineapig.png";
 import simpleLogoUrl from "./assets/images/simple_logo.png";
-
-const defaultAnalysis = {
-  summary: "좋아하는 장면과 감정을 다이어리 카드로 남겨보세요.",
-  phrase: "오래 기억하고 싶은 감상",
-  tags: ["감성", "명장면", "OST", "캐릭터", "공유하기"],
-  preference: "감정선과 장면 기록을 좋아하는 취향",
-};
+import SavedAlbumGrid from "./components/album/SavedAlbumGrid.vue";
+import Sidebar from "./components/layout/Sidebar.vue";
+import Topbar from "./components/layout/Topbar.vue";
+import BadgeModal from "./components/modal/BadgeModal.vue";
+import ProfileModal from "./components/modal/ProfileModal.vue";
+import RecordModal from "./components/modal/RecordModal.vue";
+import SaveToast from "./components/modal/SaveToast.vue";
+import MyPageDashboard from "./components/profile/MyPageDashboard.vue";
+import ImageUploadPanel from "./components/record/ImageUploadPanel.vue";
+import StickerPanel from "./components/record/StickerPanel.vue";
+import { canvasTools, nav, recentTags } from "./constants/navigation";
+import { decorations, stickerCategories } from "./constants/stickers";
+import { defaultAnalysis } from "./constants/defaultAnalysis";
 
 export default {
   name: "App",
+  components: {
+    BadgeModal,
+    ImageUploadPanel,
+    MyPageDashboard,
+    ProfileModal,
+    RecordModal,
+    SavedAlbumGrid,
+    SaveToast,
+    Sidebar,
+    StickerPanel,
+    Topbar,
+  },
   data() {
     return {
       simpleLogoUrl,
       query: "",
       activePage: "기록 작성",
       activeStickerCategory: "전체",
-      shareMode: "story",
       isRecordModalOpen: false,
       selectedDecorationId: null,
       mainImageSrc: "",
@@ -413,46 +321,31 @@ export default {
       isCheckingAuth: true,
       currentUser: null,
       isLoggingOut: false,
+      isProfileSaving: false,
+      showProfileMenu: false,
+      isProfileModalOpen: false,
+      isBadgeModalOpen: false,
       csrfToken: "",
+      profileForm: {
+        nickname: "",
+        profileImage: null,
+        removeProfileImage: false,
+      },
+      profilePreviewLocalUrl: "",
+      profileStatus: {
+        type: "",
+        message: "",
+      },
+      selectedBadgeIds: [],
       dragging: null,
       resizing: null,
       rotating: null,
-      nav: ["홈", "내 앨범", "기록 작성", "리뷰", "마이페이지"],
-      recentTags: ["감성애니", "인생작", "명장면", "음악", "OST맛집"],
-      canvasTools: [
-        { icon: "▦", label: "배경" },
-        { icon: "★", label: "스티커" },
-        { icon: "T", label: "메모", action: "memo" },
-        { icon: "＋", label: "이미지" },
-        { icon: "◇", label: "테이프" },
-      ],
-      stickerCategories: ["전체", "스티커", "프레임", "말풍선", "아이콘", "배경"],
-      decorations: [
-        { id: "guineapig", icon: "guineapig", label: "기니피그", tone: "sticker-image guineapig-sticker", category: "스티커", imageSrc: guineapigUrl },
-        { icon: "♡", tone: "pink", category: "스티커" },
-        { icon: "★", tone: "purple", category: "스티커" },
-        { icon: "✦", tone: "line", category: "스티커" },
-        { icon: "♪", tone: "soft", category: "스티커" },
-        { icon: "!", tone: "pink", category: "아이콘" },
-        { icon: "#", tone: "purple", category: "아이콘" },
-        { icon: "Zzz", tone: "line bubble", category: "말풍선" },
-        { icon: "좋아해", tone: "pink bubble", category: "말풍선" },
-        { icon: "최애 장면", tone: "purple bubble", category: "말풍선" },
-        { icon: "POLA", tone: "ink frame", category: "프레임" },
-        { icon: "FILM", tone: "purple frame", category: "프레임" },
-        { icon: "grid", tone: "soft bg", category: "배경" },
-        { icon: "dot", tone: "pink bg", category: "배경" },
-        { icon: "tape", tone: "masking-tape tape-lavender", category: "스티커" },
-        { icon: "tape", tone: "masking-tape tape-rose", category: "스티커" },
-        { icon: "tape", tone: "masking-tape tape-mint", category: "스티커" },
-      ],
+      nav,
+      recentTags,
+      canvasTools,
+      stickerCategories,
+      decorations,
       placedItems: [],
-      shareModes: [
-        { id: "story", label: "스토리 9:16" },
-        { id: "feed", label: "피드 1:1" },
-        { id: "link", label: "링크 카드" },
-        { id: "image", label: "이미지 저장" },
-      ],
       ai: defaultAnalysis,
       currentRecordId: null,  // 현재 편집 중인 백엔드 Record ID (null이면 신규)
       isSaving: false,         // 저장 중 중복 요청 방지
@@ -471,6 +364,45 @@ export default {
     canUndo() {
       return this.undoHistory.length > 0;
     },
+    profilePreviewUrl() {
+      return this.profilePreviewLocalUrl || this.currentUser?.profile_image || "";
+    },
+    profileInitial() {
+      const source = this.currentUser?.nickname || this.currentUser?.email || "?";
+      return source.trim().slice(0, 1).toUpperCase();
+    },
+    activityStats() {
+      return this.getActivityStats();
+    },
+    profileStats() {
+      const stats = this.activityStats;
+      const unlockedBadges = this.availableBadges.filter((badge) => badge.unlocked).length;
+      return [
+        { icon: "🏅", label: "수집한 뱃지", value: unlockedBadges, action: "badges" },
+        { icon: "▣", label: "내 앨범", value: stats.albums },
+        { icon: "↗", label: "공유 카드", value: stats.shares },
+        { icon: "⭐", label: "대표 뱃지", value: this.featuredBadges.length },
+      ];
+    },
+    availableBadges() {
+      return this.getUserBadges();
+    },
+    featuredBadges() {
+      const unlocked = this.availableBadges.filter((badge) => badge.unlocked);
+      const selected = this.selectedBadgeIds
+        .map((id) => unlocked.find((badge) => badge.id === id))
+        .filter(Boolean);
+      return selected.slice(0, 3);
+    },
+    recentActivities() {
+      return (this.savedCards || []).slice(0, 5).map((card) => ({
+        id: `saved-${card.id}`,
+        icon: "▣",
+        title: card.title || "저장한 다이어리",
+        description: "내 앨범에 저장한 감상 카드",
+        date: card.date || "최근",
+      }));
+    },
     visibleDecorations() {
       if (this.activeStickerCategory === "전체") {
         return this.decorations;
@@ -483,32 +415,46 @@ export default {
         "내 앨범": "저장한 다이어리 카드를 모아보는 공간입니다.",
         리뷰: "작품별 감상과 별점을 정리합니다.",
         마이페이지: "내 취향과 활동 기록을 확인합니다.",
-        "공유 페이지": "다이어리 카드를 공유용 이미지와 링크로 미리 봅니다.",
+        "공유 페이지": "다이어리 기록을 공유용 이미지로 생성하고 저장합니다.",
       };
       return descriptions[this.activePage] || "선택한 기록 모음을 다이어리 카드로 미리 봅니다.";
     },
     detailCards() {
+      if (this.activePage === this.nav[4]) {
+        return [
+          { icon: "✏", title: "기록 작성", body: "새 감상 다이어리를 작성합니다.", action: this.nav[2] },
+          { icon: "▣", title: "내 앨범", body: "작성한 기록을 확인합니다.", action: this.nav[1] },
+          { icon: "↗", title: "공유 페이지", body: "공유 이미지를 생성하고 저장합니다.", action: "공유 페이지" },
+        ];
+      }
       return [
         { title: "기록 작성", body: "이미지, 스티커, 메모를 붙여 새 감상 다이어리를 만듭니다.", action: "기록 작성" },
         { title: "내 앨범", body: "저장한 다이어리 카드를 다시 열고 편집할 수 있습니다.", action: "내 앨범" },
-        { title: "공유 페이지", body: "스토리와 피드용 공유 미리보기를 확인합니다.", action: "공유 페이지" },
+        { title: "공유 페이지", body: "완성한 기록을 이미지로 생성하고 저장합니다.", action: "공유 페이지" },
       ];
     },
   },
   mounted() {
     window.addEventListener("pointermove", this.handlePointerMove);
     window.addEventListener("pointerup", this.stopPointerWork);
+    document.addEventListener("click", this.handleProfileOutsideClick);
+    document.addEventListener("keydown", this.handleGlobalKeydown);
+    this.loadRepresentativeBadges();
     this.checkAuth();
     this.loadSavedCards();
   },
   beforeUnmount() {
     window.removeEventListener("pointermove", this.handlePointerMove);
     window.removeEventListener("pointerup", this.stopPointerWork);
+    document.removeEventListener("click", this.handleProfileOutsideClick);
+    document.removeEventListener("keydown", this.handleGlobalKeydown);
   },
   methods: {
     async checkAuth() {
       try {
         this.currentUser = await this.apiFetch("/api/auth/me/");
+        this.resetProfileForm();
+        this.loadRepresentativeBadges();
         this.isCheckingAuth = false;
       } catch (error) {
         console.error(error);
@@ -540,6 +486,203 @@ export default {
       const data = await response.json();
       this.csrfToken = data.csrfToken || "";
       return this.csrfToken;
+    },
+    toggleProfileMenu() {
+      this.showProfileMenu = !this.showProfileMenu;
+    },
+    closeProfileMenu() {
+      this.showProfileMenu = false;
+    },
+    handleProfileOutsideClick(event) {
+      if (!this.showProfileMenu) return;
+      const menu = this.$refs.profileMenu;
+      if (menu && !menu.contains(event.target)) {
+        this.closeProfileMenu();
+      }
+    },
+    handleGlobalKeydown(event) {
+      if (event.key !== "Escape") return;
+      this.closeProfileMenu();
+      if (this.isProfileModalOpen) {
+        this.closeProfileModal();
+      }
+      if (this.isBadgeModalOpen) {
+        this.closeBadgeModal();
+      }
+    },
+    openProfileModal() {
+      this.resetProfileForm();
+      this.isProfileModalOpen = true;
+    },
+    closeProfileModal() {
+      this.isProfileModalOpen = false;
+      this.resetProfileForm();
+    },
+    openBadgeModal() {
+      this.isBadgeModalOpen = true;
+    },
+    closeBadgeModal() {
+      this.isBadgeModalOpen = false;
+    },
+    badgeStorageKey() {
+      return `deokkkuRepresentativeBadges:${this.currentUser?.email || "guest"}`;
+    },
+    loadRepresentativeBadges() {
+      try {
+        const stored = JSON.parse(localStorage.getItem(this.badgeStorageKey()) || "[]");
+        this.selectedBadgeIds = Array.isArray(stored) ? stored.slice(0, 3) : [];
+      } catch (error) {
+        this.selectedBadgeIds = [];
+      }
+    },
+    persistRepresentativeBadges() {
+      try {
+        localStorage.setItem(this.badgeStorageKey(), JSON.stringify(this.selectedBadgeIds.slice(0, 3)));
+      } catch (error) {
+        // 대표 뱃지는 화면 표시용이므로 저장 실패 시 현재 세션 상태만 유지합니다.
+      }
+    },
+    toggleRepresentativeBadge(badge) {
+      if (!badge.unlocked) return;
+      if (this.selectedBadgeIds.includes(badge.id)) {
+        this.selectedBadgeIds = this.selectedBadgeIds.filter((id) => id !== badge.id);
+      } else {
+        this.selectedBadgeIds = [...this.selectedBadgeIds, badge.id].slice(-3);
+      }
+      this.persistRepresentativeBadges();
+    },
+    getActivityStats() {
+      const albums = Array.isArray(this.savedCards) ? this.savedCards.length : 0;
+      const shares = 0;
+      return {
+        records: albums,
+        albums,
+        shares,
+        recent: Math.min(albums + shares, 9),
+      };
+    },
+    getFavoriteGenres() {
+      return [];
+    },
+    getUserBadges() {
+      const stats = this.getActivityStats();
+      const ratedCount = (this.savedCards || []).filter((card) => Number(card.rating || 0) > 0).length;
+      return [
+        {
+          id: "first-record",
+          icon: "🏆",
+          label: "첫 기록 작성",
+          description: "기록 1개 이상",
+          unlocked: stats.records + stats.albums >= 1,
+        },
+        {
+          id: "archive-collector",
+          icon: "📚",
+          label: "기록 수집가",
+          description: "기록 5개 이상",
+          unlocked: stats.records + stats.albums >= 5,
+        },
+        {
+          id: "rating-master",
+          icon: "⭐",
+          label: "별점 마스터",
+          description: "별점 기록 3개 이상",
+          unlocked: ratedCount >= 3,
+        },
+        {
+          id: "decoration-starter",
+          icon: "🎨",
+          label: "다꾸 입문자",
+          description: "저장한 다이어리 1개 이상",
+          unlocked: stats.albums >= 1,
+        },
+        {
+          id: "steady-logger",
+          icon: "📝",
+          label: "꾸준한 기록러",
+          description: "기록 10개 이상",
+          unlocked: stats.records + stats.albums >= 10,
+        },
+      ];
+    },
+    resetProfileForm() {
+      if (this.profilePreviewLocalUrl) {
+        URL.revokeObjectURL(this.profilePreviewLocalUrl);
+      }
+      this.profilePreviewLocalUrl = "";
+      this.profileForm = {
+        nickname: this.currentUser?.nickname || "",
+        profileImage: null,
+        removeProfileImage: false,
+      };
+      this.profileStatus = { type: "", message: "" };
+    },
+    handleProfileImageChange(event) {
+      const file = event.target.files?.[0] || null;
+      if (this.profilePreviewLocalUrl) {
+        URL.revokeObjectURL(this.profilePreviewLocalUrl);
+      }
+      this.profilePreviewLocalUrl = file ? URL.createObjectURL(file) : "";
+      this.profileForm.profileImage = file;
+      if (file) {
+        this.profileForm.removeProfileImage = false;
+      }
+      this.profileStatus = { type: "", message: "" };
+    },
+    formatProfileDate(value) {
+      if (!value) return "";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "";
+      return date.toLocaleDateString("ko-KR", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+    },
+    async updateProfile() {
+      const nickname = this.profileForm.nickname.trim();
+      if (!nickname) {
+        this.profileStatus = { type: "error", message: "닉네임을 입력해주세요." };
+        return;
+      }
+
+      this.isProfileSaving = true;
+      this.profileStatus = { type: "", message: "" };
+      try {
+        const csrfToken = await this.getCsrfToken();
+        const formData = new FormData();
+        formData.append("nickname", nickname);
+        formData.append("remove_profile_image", this.profileForm.removeProfileImage ? "true" : "false");
+        if (this.profileForm.profileImage && !this.profileForm.removeProfileImage) {
+          formData.append("profile_image", this.profileForm.profileImage);
+        }
+
+        const response = await fetch("/api/auth/me/update/", {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "X-CSRFToken": csrfToken },
+          body: formData,
+        });
+        if (!response.ok) {
+          const responseBody = await response.text();
+          let detail = responseBody;
+          try {
+            const errorData = JSON.parse(responseBody);
+            detail = errorData.detail || JSON.stringify(errorData);
+          } catch (error) {
+            // Keep the raw response body when the server does not return JSON.
+          }
+          throw new Error(`프로필 저장에 실패했습니다. (${response.status}) ${detail}`);
+        }
+
+        this.currentUser = await response.json();
+        this.resetProfileForm();
+        this.profileStatus = { type: "success", message: "프로필이 저장되었습니다." };
+      } catch (error) {
+        this.profileStatus = { type: "error", message: error.message || "프로필 저장에 실패했습니다." };
+      } finally {
+        this.isProfileSaving = false;
+      }
     },
     async apiFetch(url, options = {}) {
       const method = (options.method || "GET").toUpperCase();
@@ -590,6 +733,14 @@ export default {
     },
     navigatePage(page) {
       this.activePage = page;
+    },
+    openProfilePageFromDropdown() {
+      this.navigatePage(this.nav[4]);
+      this.closeProfileMenu();
+    },
+    openAlbumFromToast() {
+      this.navigatePage("내 앨범");
+      this.toastMessage = "";
     },
     navIcon(item) {
       const icons = {
@@ -891,7 +1042,7 @@ export default {
     apiRecordToSavedCard(record) {
       const cd = record.canvas_data || {};
       const placedItems = cd.placed_items || [];
-      const title = (cd.title || "").trim() || record.work_title || "제목 없는 기록";
+      const title = (cd.title || "").trim() || record.work_title || record.anime_title || "제목 없는 기록";
       const watchedDate = record.watched_date
         ? record.watched_date.replaceAll("-", ".")
         : "";
@@ -938,13 +1089,15 @@ export default {
       this.isSaving = true;
 
       try {
+        const recordTitle = (this.currentRecord.title || this.recordForm.title || "").trim() || "제목 없는 기록";
         const payload = {
-          work_title: this.currentRecord.title || "제목 없는 기록",
+          work_title: recordTitle,
+          anime_title: recordTitle,
           rating: this.currentRecord.rating ?? null,
           watched_date: this.formatInputDate(this.currentRecord.date) || null,
           content: this.currentRecord.memo || "",
           canvas_data: {
-            title: this.currentRecord.title,
+            title: recordTitle,
             placed_items: this.cloneForSave(this.placedItems),
             main_image_src: this.mainImageSrc,
             analysis: this.cloneForSave(this.ai),
