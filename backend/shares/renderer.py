@@ -183,7 +183,8 @@ def render_card(layout_data: dict, poster_url: str = '',
     _render_header(canvas, draw, layout_data)
 
     # ── 3) Zone 2: 콜라주 (포스터 + 스티커) ──────────────
-    _render_collage(canvas, draw, layout_data, poster_url, stickers)
+    _render_collage(canvas, draw, layout_data, poster_url, stickers,
+                    ai_sticker_placements=layout_data.get('stickers', []))
 
     # ── 4) Zone 3: 메모 (감상문) ─────────────────────────
     _render_memo(canvas, draw, layout_data)
@@ -228,8 +229,10 @@ def _render_header(canvas, draw, layout_data):
 #  Zone 2: 콜라주
 # ═════════════════════════════════════════════════════════
 
-def _render_collage(canvas, draw, layout_data, poster_url, stickers):
+def _render_collage(canvas, draw, layout_data, poster_url, stickers,
+                    ai_sticker_placements=None):
     """포스터 이미지 + 사용자 스티커 배치."""
+    ai_sticker_placements = ai_sticker_placements or []
     collage = layout_data.get('collage', {})
 
     # ── 포스터 ────────────────────────────────────────
@@ -240,7 +243,11 @@ def _render_collage(canvas, draw, layout_data, poster_url, stickers):
     ph = int(poster.get('height', 700))
     frame_style = poster.get('frame', 'none')  # none, polaroid, rounded, shadow
 
-    poster_img = _download_image(poster_url)
+    # poster_url이 로컬 파일 경로일 수도 있음
+    if poster_url and os.path.isfile(poster_url):
+        poster_img = _load_local_image(poster_url)
+    else:
+        poster_img = _download_image(poster_url)
     if poster_img:
         poster_img = poster_img.resize((pw, ph), Image.LANCZOS)
 
@@ -264,9 +271,17 @@ def _render_collage(canvas, draw, layout_data, poster_url, stickers):
         ly = py + ph + 16
         draw.text((lx, ly), poster_label, fill=label_color, font=font)
 
-    # ── 사용자 스티커 (다이어리 placedItems 반영) ─────
-    for sticker in stickers:
-        _render_sticker(canvas, sticker)
+    # ── 사용자 스티커 (AI가 결정한 좌표로 배치) ─────
+    # AI 배치 정보를 index로 매핑
+    placement_map = {}
+    for p in ai_sticker_placements:
+        idx = p.get('index')
+        if idx is not None:
+            placement_map[idx] = p
+
+    for i, sticker in enumerate(stickers):
+        placement = placement_map.get(i)
+        _render_sticker(canvas, sticker, placement=placement)
 
 
 def _paste_polaroid(canvas, img, x, y, w, h):
@@ -301,45 +316,202 @@ def _paste_with_shadow(canvas, img, x, y, offset=8, blur=12):
     canvas.paste(img, (x, y), img if img.mode == 'RGBA' else None)
 
 
-def _render_sticker(canvas, sticker_data):
-    """사용자 다이어리의 스티커 하나를 카드에 배치.
+def _render_sticker(canvas, sticker_data, placement=None):
+    """사용자 다이어리의 스티커/말풍선/이미지를 카드에 배치.
 
-    sticker_data 예시:
-    {
-      "type": "sticker",
-      "src": "http://...sticker.png",
-      "x": 120, "y": 300,
-      "width": 80, "height": 80,
-      "rotation": 0
-    }
-    다이어리 캔버스(~640px)를 카드(1080px)로 스케일 변환한다.
+    placement가 있으면 AI가 결정한 px 좌표를 사용하고,
+    없으면 원본 % 좌표를 px로 변환하여 폴백한다.
+
+    프론트엔드 placedItems 구조:
+    - 일반 스티커: {icon: "♡", tone: "pink", x: 6, y: 18, scale: 1.08, rotate: 0}
+    - 이미지 스티커: {icon: "", imageSrc: "/api/records/uploads/3/", ...}
+    - 말풍선: {type: "bubble", bubbleType: "normal", text: "개꿀잼", ...}
     """
-    src = sticker_data.get('src', '')
-    if not src:
+    item_type = sticker_data.get('type', 'sticker')
+
+    if placement:
+        # AI가 결정한 px 좌표 사용
+        px = int(placement.get('x', 0))
+        py = max(int(placement.get('y', 0)), ZONE_COLLAGE[0])  # Zone 1 침범 방지
+        ai_w = int(placement.get('width', 0))
+        ai_h = int(placement.get('height', 0))
+        rotation = int(placement.get('rotation', 0))
+    else:
+        # 폴백: % → px 변환 (Zone 2~3 범위로 매핑)
+        x_pct = sticker_data.get('x', 0)
+        y_pct = sticker_data.get('y', 0)
+        px = int(x_pct / 100 * CARD_WIDTH)
+        py = max(int(y_pct / 100 * CARD_HEIGHT), ZONE_COLLAGE[0])  # Zone 1 침범 방지
+        ai_w = 0
+        ai_h = 0
+        rotation = int(sticker_data.get('rotate', 0))
+
+    if item_type == 'bubble':
+        ai_font_size = int(placement.get('font_size', 0)) if placement else 0
+        _render_bubble_sticker(canvas, sticker_data, px, py,
+                               override_w=ai_w, override_h=ai_h,
+                               override_font_size=ai_font_size)
+    elif sticker_data.get('imageSrc'):
+        _render_image_sticker(canvas, sticker_data, px, py, rotation,
+                              override_w=ai_w, override_h=ai_h)
+    elif sticker_data.get('icon'):
+        _render_icon_sticker(canvas, sticker_data, px, py, rotation,
+                             override_size=ai_w)
+
+
+def _render_icon_sticker(canvas, data, px, py, rotation, override_size=0):
+    """이모지/텍스트 아이콘 스티커를 렌더링한다."""
+    icon = data.get('icon', '')
+    if not icon or icon in ('tape', 'POLA', 'FILM', 'grid', 'dot'):
+        if not icon:
+            return
+    if override_size:
+        font_size = max(24, override_size // 2)
+    else:
+        scale = data.get('scale', 1.0)
+        font_size = int(48 * scale)
+    font = _load_font(font_size, 'bold')
+
+    # 스티커를 별도 이미지에 그려서 회전 후 합성
+    text_img = Image.new('RGBA', (font_size * 3, font_size * 3), (0, 0, 0, 0))
+    text_draw = ImageDraw.Draw(text_img)
+    try:
+        bbox = font.getbbox(icon)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+    except Exception:
+        tw, th = font_size, font_size
+    tx = (text_img.width - tw) // 2
+    ty = (text_img.height - th) // 2
+    text_draw.text((tx, ty), icon, fill='#6b5b8a', font=font)
+
+    # 투명 여백 제거
+    bbox_actual = text_img.getbbox()
+    if bbox_actual:
+        text_img = text_img.crop(bbox_actual)
+
+    if rotation:
+        text_img = text_img.rotate(-rotation, expand=True, fillcolor=(0, 0, 0, 0))
+
+    canvas.paste(text_img, (px, py), text_img)
+
+
+def _render_image_sticker(canvas, data, px, py, rotation,
+                          override_w=0, override_h=0):
+    """이미지 스티커를 렌더링한다."""
+    local_path = data.get('_local_path', '')
+    src = data.get('imageSrc', '')
+    if not src and not local_path:
         return
 
-    # 다이어리 캔버스 → 카드 크기 비율 (대략 1.6~1.7배)
-    # 다이어리 캔버스 너비를 ~640px로 가정
-    DIARY_CANVAS_WIDTH = 640
-    scale = CARD_WIDTH / DIARY_CANVAS_WIDTH
-
-    sx = int(sticker_data.get('x', 0) * scale)
-    # 콜라주 존 시작점을 오프셋으로 추가
-    sy = int(sticker_data.get('y', 0) * scale) + ZONE_COLLAGE[0]
-    sw = int(sticker_data.get('width', 60) * scale)
-    sh = int(sticker_data.get('height', 60) * scale)
-
-    img = _download_image(src)
+    img = _load_local_image(local_path) if local_path else _download_image(src)
     if not img:
         return
 
-    img = img.resize((sw, sh), Image.LANCZOS)
+    if override_w and override_h:
+        target_w = override_w
+        target_h = override_h
+    elif override_w:
+        ratio = override_w / img.width
+        target_w = override_w
+        target_h = int(img.height * ratio)
+    else:
+        scale = data.get('scale', 0.72)
+        target_w = int(CARD_WIDTH * 0.12 * scale)
+        ratio = target_w / img.width
+        target_h = int(img.height * ratio)
+    img = img.resize((target_w, target_h), Image.LANCZOS)
 
-    rotation = sticker_data.get('rotation', 0)
     if rotation:
         img = img.rotate(-rotation, expand=True, fillcolor=(0, 0, 0, 0))
 
-    canvas.paste(img, (sx, sy), img)
+    canvas.paste(img, (px, py), img)
+
+
+def _render_bubble_sticker(canvas, data, px, py, override_w=0, override_h=0,
+                           override_font_size=0):
+    """말풍선 스티커를 렌더링한다."""
+    text = data.get('text', '')
+    bubble_type = data.get('bubbleType', 'normal')
+    if override_w and override_h:
+        width = override_w
+        height = override_h
+    else:
+        width = int(data.get('width', 180) * CARD_WIDTH / 640)
+        height = int(data.get('height', 100) * CARD_HEIGHT / 900)
+
+    # AI가 지정한 font_size 우선, 없으면 말풍선 크기에 맞춰 자동 계산
+    if override_font_size:
+        font_size = override_font_size
+    else:
+        # 말풍선 크기에 맞춰 글꼴 크기 자동 조정
+        font_size = _auto_bubble_font_size(text, width, height)
+    bg_color = data.get('bgColor', '#ffffff')
+    border_color = data.get('borderColor', '#b49cd8')
+    text_color = data.get('textColor', '#342a3f')
+
+    # 말풍선 배경 그리기
+    bubble = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+    bubble_draw = ImageDraw.Draw(bubble)
+
+    radius = 36 if bubble_type == 'thought' else 24
+    bubble_draw.rounded_rectangle(
+        [(0, 0), (width - 1, height - 1)],
+        radius=radius, fill=bg_color, outline=border_color, width=3,
+    )
+
+    # 말풍선 꼬리/구름점
+    if bubble_type == 'thought':
+        # 구름 점 2개
+        bubble_draw.ellipse(
+            [20, height - 2, 34, height + 12],
+            fill=bg_color, outline=border_color, width=2,
+        )
+        bubble_draw.ellipse(
+            [10, height + 10, 20, height + 20],
+            fill=bg_color, outline=border_color, width=2,
+        )
+    else:
+        # 삼각형 꼬리
+        tail = [(14, height - 2), (28, height - 2), (10, height + 14)]
+        bubble_draw.polygon(tail, fill=bg_color, outline=border_color)
+        # 꼬리 내부 흰색으로 경계 덮기
+        bubble_draw.line([(16, height - 3), (26, height - 3)], fill=bg_color, width=4)
+
+    # 텍스트
+    if text:
+        font = _load_font(font_size, 'bold')
+        padding = 16
+        _draw_text_on_image(bubble_draw, text, padding, padding,
+                            width - padding * 2, font, text_color)
+
+    canvas.paste(bubble, (px, py), bubble)
+
+
+def _auto_bubble_font_size(text: str, width: int, height: int) -> int:
+    """말풍선 크기에 맞는 글꼴 크기를 자동 계산한다."""
+    if not text:
+        return 20
+    padding = 16 * 2  # 좌우 패딩
+    usable_w = max(width - padding, 60)
+    usable_h = max(height - padding, 40)
+    # 한글 1글자 ≈ font_size px 폭, 1.4 * font_size 높이
+    # 적절한 크기를 이진탐색
+    for fs in range(28, 11, -2):
+        chars_per_line = max(1, usable_w // fs)
+        num_lines = (len(text) + chars_per_line - 1) // chars_per_line
+        total_h = int(num_lines * fs * 1.4)
+        if total_h <= usable_h:
+            return fs
+    return 12
+
+
+def _draw_text_on_image(draw, text, x, y, max_w, font, color):
+    """이미지 위에 줄바꿈 텍스트를 그린다."""
+    lines = _wrap_text(text, font, max_w)
+    line_h = int(font.size * 1.4)
+    for i, line in enumerate(lines):
+        draw.text((x, y + i * line_h), line, fill=color, font=font)
 
 
 # ═════════════════════════════════════════════════════════

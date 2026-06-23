@@ -34,7 +34,8 @@ def build_card_prompt(record, templates, placed_items=None) -> str:
         'watched_date': str(record.watched_date) if record.watched_date else None,
         'content': record.content[:500] if record.content else '',
         'tags': _extract_tags(record),
-        'sticker_count': len([i for i in placed_items if i.get('type') == 'sticker']),
+        'sticker_count': len([i for i in placed_items if i.get('type', 'sticker') not in ('text',)]),
+        'stickers': _summarize_stickers(placed_items),
     }
 
     # 2) 감상문 처리 안내
@@ -81,7 +82,35 @@ def build_card_prompt(record, templates, placed_items=None) -> str:
 - 포스터 이미지 배치 (x, y, width, height 결정)
 - frame 스타일 선택: "none" | "polaroid" | "rounded" | "shadow"
 - 포스터 아래 캐릭터/작품명 라벨 (선택사항)
-- 사용자 스티커 {record_data['sticker_count']}개가 자동 배치되므로 공간 고려
+- 사용자 스티커 {record_data['sticker_count']}개를 포스터 주변에 배치해야 함 (stickers 배열로 각각 좌표 지정)
+
+### 스티커 재배치 (중요!)
+- 입력 데이터의 stickers 배열에 있는 각 스티커를 카드에 재배치해.
+- 각 스티커의 index(0부터)에 대응하는 x, y, width, height, rotation을 응답 stickers 배열에 포함해.
+- **모든 스티커의 y좌표는 반드시 140 이상이어야 한다 (Zone 1 헤더 영역 침범 금지).**
+- **다이어리 원본 배치를 참고해서 재배치해.** 각 스티커의 x_pct, y_pct는 다이어리에서의 상대 위치(%)이다. 이 상대 관계를 최대한 유지하되 카드 크기(1080×1920)에 맞게 스케일해. 예: 다이어리에서 왼쪽 위에 있던 스티커는 카드에서도 왼쪽 위, 오른쪽 아래에 있던 스티커는 카드에서도 오른쪽 아래.
+
+#### 메인 이미지 (is_main_image: true)
+- 사용자가 업로드한 장면 캡처/이미지이므로 **가장 중요한 요소**다.
+- Zone 2(y: 140~1100) 내에서 **공백을 최대한 채우도록 크게** 배치해.
+- 여러 메인 이미지가 있으면 Zone 2 공간을 나눠서 각각 크게 배치. 서로 겹치면 안 됨.
+- 다이어리에서의 상대 위치를 반영: 왼쪽에 있던 이미지는 카드 왼쪽, 오른쪽에 있던 이미지는 카드 오른쪽.
+- 포스터, 다른 메인 이미지, 메모 영역과 겹치지 않게.
+- width, height를 최소 300px 이상으로 설정.
+
+#### 일반 스티커 (has_image: true, is_main_image 없음 / 아이콘 스티커)
+- 아이콘 스티커(icon 텍스트): 60~100px 크기로 자유롭게 배치.
+- 이미지 스티커(기본 스티커): 100~200px 크기로 자유롭게 배치.
+- 다이어리 원본 배치의 상대 위치를 참고해서 비슷한 위치에 배치.
+- **단, 메인 이미지의 중심 70% 영역에는 스티커를 배치하지 마.** 예: 메인 이미지가 (x=100, y=200, w=400, h=400)이면 중심 70% 보호 영역은 (x=160, y=260, w=280, h=280). 이 영역 안에 스티커가 들어가면 안 됨. 메인 이미지 가장자리 30%에는 살짝 걸칠 수 있음.
+- 스티커끼리도 겹치지 않게.
+
+#### 말풍선 (type: "bubble")
+- 말풍선 안의 텍스트가 **절대 잘리지 않도록** 충분한 크기를 확보해.
+- 한글 1글자당 약 width 28px, height 34px로 계산. 예: 4글자 한 줄이면 최소 width 140px.
+- 텍스트가 길면 여러 줄로 나뉘는 걸 고려해서 height를 충분히 잡아.
+- 최소 width 160px, height 80px.
+- font_size 필드를 추가해서 말풍선 크기에 맞는 글꼴 크기를 지정 (16~28 범위).
 
 ### Zone 3 — 메모 (y: 1100~1500)
 - 감상문 텍스트를 메모지 느낌으로 배치
@@ -103,6 +132,43 @@ def build_card_prompt(record, templates, placed_items=None) -> str:
 JSON만 응답해. 다른 텍스트 없이.
 """
     return prompt
+
+
+def _summarize_stickers(placed_items: list) -> list[dict]:
+    """placedItems에서 스티커 요약 정보를 추출한다."""
+    stickers = []
+    for item in placed_items:
+        item_type = item.get('type', 'sticker')
+        if item_type == 'text':
+            continue
+        summary = {
+            'type': item_type,
+            'icon': item.get('icon', ''),
+            'x_pct': item.get('x', 0),
+            'y_pct': item.get('y', 0),
+            'scale': item.get('scale', 1.0),
+            'width': item.get('width', 0),
+            'height': item.get('height', 0),
+            'zIndex': item.get('zIndex', 0),
+        }
+        if item_type == 'bubble':
+            summary['text'] = item.get('text', '')
+            summary['bubbleType'] = item.get('bubbleType', 'normal')
+        if item.get('imageSrc'):
+            summary['has_image'] = True
+            summary['is_main_image'] = _is_main_image(item)
+        stickers.append(summary)
+    return stickers
+
+
+def _is_main_image(item: dict) -> bool:
+    """업로드된 사용자 이미지(장면 캡처 등)인지 판단한다.
+
+    /api/records/uploads/ 경로면 사용자가 직접 올린 이미지 → 메인 이미지.
+    기본 스티커(/static/ 등)는 메인이 아님.
+    """
+    src = item.get('imageSrc', '')
+    return '/api/records/uploads/' in src
 
 
 def _extract_tags(record) -> list[str]:
