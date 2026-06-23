@@ -1,6 +1,9 @@
 from django.contrib import admin
 
-from .models import Comment, Decoration, FavoriteScene, Like, Record, RecordImage
+from .models import (
+    Comment, Decoration, FavoriteScene, Like, Record, RecordImage,
+    StickerAsset, UserSticker,
+)
 
 
 class DecorationInline(admin.TabularInline):
@@ -39,6 +42,21 @@ class RecordImageAdmin(admin.ModelAdmin):
     list_filter = ('created_at',)
     search_fields = ('uploader__email', 'uploader__nickname', 'original_name')
     readonly_fields = ('size', 'original_name', 'created_at')
+
+
+@admin.register(StickerAsset)
+class StickerAssetAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'category', 'is_default', 'is_active', 'order')
+    list_filter = ('category', 'is_default', 'is_active')
+    list_editable = ('order', 'is_active', 'is_default')
+    search_fields = ('name',)
+
+
+@admin.register(UserSticker)
+class UserStickerAdmin(admin.ModelAdmin):
+    list_display = ('id', 'user', 'sticker', 'acquired_type', 'acquired_at')
+    list_filter = ('acquired_type',)
+    search_fields = ('user__nickname', 'sticker__name')
 
 
 @admin.register(Like)

@@ -103,6 +103,76 @@ class RecordImage(models.Model):
         return f'RecordImage<{self.id} by {self.uploader_id}>'
 
 
+def sticker_upload_to(instance, filename):
+    """스티커 이미지를 stickers/<uuid>.<ext> 로 저장."""
+    ext = os.path.splitext(filename)[1].lower()
+    return f'stickers/{uuid.uuid4().hex}{ext}'
+
+
+class StickerAsset(models.Model):
+    """어드민이 등록하는 스티커 원본 에셋."""
+    CATEGORY_CHOICES = [
+        ('sticker', '스티커'),
+        ('frame', '프레임'),
+        ('bubble', '말풍선'),
+        ('icon', '아이콘'),
+        ('background', '배경'),
+        ('tape', '테이프'),
+    ]
+
+    name = models.CharField('스티커명', max_length=100)
+    category = models.CharField('카테고리', max_length=20,
+                                choices=CATEGORY_CHOICES, default='sticker')
+    image = models.ImageField('이미지', upload_to=sticker_upload_to)
+    emoji_fallback = models.CharField('이모지 대체', max_length=10, blank=True,
+                                      help_text='이미지 없이 이모지로 표시할 경우')
+    tone = models.CharField('CSS 톤 클래스', max_length=50, blank=True)
+    is_default = models.BooleanField('기본 제공', default=False,
+                                     help_text='True면 신규 가입 유저에게 자동 부여')
+    is_active = models.BooleanField('활성화', default=True)
+    order = models.IntegerField('정렬 순서', default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'sticker_asset'
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return f'{self.name} ({self.get_category_display()})'
+
+
+class UserSticker(models.Model):
+    """유저별 보유 스티커."""
+    ACQUIRE_CHOICES = [
+        ('default', '기본 제공'),
+        ('reward', '보상'),
+        ('purchase', '구매'),
+        ('event', '이벤트'),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='stickers',
+    )
+    sticker = models.ForeignKey(
+        StickerAsset,
+        on_delete=models.CASCADE,
+        related_name='owners',
+    )
+    acquired_type = models.CharField('획득 방법', max_length=20,
+                                     choices=ACQUIRE_CHOICES, default='default')
+    acquired_at = models.DateTimeField('획득일', auto_now_add=True)
+
+    class Meta:
+        db_table = 'user_sticker'
+        unique_together = [('user', 'sticker')]
+        ordering = ['sticker__order', 'sticker__id']
+
+    def __str__(self):
+        return f'{self.user_id} owns {self.sticker.name}'
+
+
 class Decoration(models.Model):
     """다꾸 캔버스 위의 개별 요소 (2단계)."""
     TYPE_CHOICES = [

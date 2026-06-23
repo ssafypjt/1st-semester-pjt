@@ -803,10 +803,35 @@ window.addEventListener("load", () => {
       document.addEventListener("pointerdown", this.handleSaveControl, true);
       document.addEventListener("click", this.handleProfileOutsideClick);
       document.addEventListener("keydown", this.handleGlobalKeydown);
+
+      // 새로고침/탭 닫기 시 확인 + 임시저장
+      this._beforeUnloadHandler = (e) => {
+        const hasWork = this.placedItems.length > 0 || this.mainImageSrc;
+        if (hasWork) {
+          // 임시저장 (동기적으로 localStorage에 기록)
+          this._autosaveDraft();
+          // 브라우저 확인 다이얼로그 표시
+          e.preventDefault();
+          e.returnValue = "";
+        }
+      };
+      window.addEventListener("beforeunload", this._beforeUnloadHandler);
+
+      // pagehide: beforeunload가 안 먹히는 모바일 등 대비
+      this._pagehideHandler = () => {
+        if (this.placedItems.length > 0 || this.mainImageSrc) {
+          this._autosaveDraft();
+        }
+      };
+      window.addEventListener("pagehide", this._pagehideHandler);
+
       this.loadCurrentUser();
       this.loadRepresentativeBadges();
       this.loadSavedCards();
-      this.loadRecords();
+      this.loadRecords().then(() => {
+        // 레코드 로드 후 임시저장 데이터 복원 확인
+        this._checkAutosaveRestore();
+      });
     },
     beforeUnmount() {
       window.removeEventListener("popstate", this.handlePopState);
@@ -814,6 +839,8 @@ window.addEventListener("load", () => {
       document.removeEventListener("pointerdown", this.handleSaveControl, true);
       document.removeEventListener("click", this.handleProfileOutsideClick);
       document.removeEventListener("keydown", this.handleGlobalKeydown);
+      window.removeEventListener("beforeunload", this._beforeUnloadHandler);
+      window.removeEventListener("pagehide", this._pagehideHandler);
     },
     methods: {
       routeForPage(page, objectId = null) {
@@ -1265,6 +1292,17 @@ window.addEventListener("load", () => {
           this.records = records.map(this.normalizeBackendRecord);
           this.selectedIndex = 0;
           if (this.records.length) {
+            // 첫 번째 레코드의 canvas_data에서 placedItems 복원
+            const canvas = this.records[0].raw?.canvas_data || {};
+            this.placedItems = Array.isArray(canvas.placedItems) ? JSON.parse(JSON.stringify(canvas.placedItems)) : [];
+            this.mainImageSrc = canvas.mainImageSrc || "";
+            this.currentRecord = {
+              title: this.records[0].title,
+              date: this.records[0].date,
+              rating: this.records[0].rating,
+              memo: this.records[0].memo || "",
+              tags: this.records[0].tags || [],
+            };
             try {
               await this.analyzeFromRecord(this.records[0]);
             } catch (error) {
@@ -1276,6 +1314,58 @@ window.addEventListener("load", () => {
           }
         } finally {
           this.isLoading = false;
+        }
+      },
+      // ── 임시저장 (자동) ──
+      _autosaveKey() {
+        const owner = this.currentUserEmail || "guest";
+        return `deokkkuAutosave:${owner}`;
+      },
+      _autosaveDraft() {
+        try {
+          const data = {
+            currentRecord: JSON.parse(JSON.stringify(this.currentRecord)),
+            placedItems: JSON.parse(JSON.stringify(this.placedItems)),
+            mainImageSrc: this.mainImageSrc,
+            selectedIndex: this.selectedIndex,
+            editingSavedCardId: this.editingSavedCardId,
+            activePage: this.activePage,
+            savedAt: new Date().toISOString(),
+          };
+          localStorage.setItem(this._autosaveKey(), JSON.stringify(data));
+        } catch (e) {
+          console.warn("임시저장 실패:", e);
+        }
+      },
+      _clearAutosave() {
+        try { localStorage.removeItem(this._autosaveKey()); } catch (e) { /* ignore */ }
+      },
+      _checkAutosaveRestore() {
+        try {
+          const raw = localStorage.getItem(this._autosaveKey());
+          if (!raw) return;
+          const saved = JSON.parse(raw);
+          if (!saved || !saved.currentRecord) { this._clearAutosave(); return; }
+
+          const title = saved.currentRecord.title || "제목 없음";
+          const when = saved.savedAt ? new Date(saved.savedAt).toLocaleString("ko-KR") : "";
+          const msg = `작성 중이던 기록이 있습니다.\n\n"${title}" (${when})\n\n복원하시겠습니까?\n[확인] 복원  /  [취소] 삭제`;
+
+          if (confirm(msg)) {
+            // 복원
+            this.currentRecord = saved.currentRecord;
+            this.placedItems = Array.isArray(saved.placedItems) ? saved.placedItems : [];
+            this.mainImageSrc = saved.mainImageSrc || "";
+            this.selectedIndex = saved.selectedIndex ?? 0;
+            this.editingSavedCardId = saved.editingSavedCardId || null;
+            if (saved.activePage) this.applyPage(saved.activePage, true);
+            this.toastMessage = "임시저장 기록을 복원했습니다.";
+          }
+          // 복원 여부와 관계없이 autosave 클리어
+          this._clearAutosave();
+        } catch (e) {
+          console.warn("임시저장 복원 실패:", e);
+          this._clearAutosave();
         }
       },
       savedCardsKey() {
@@ -1371,11 +1461,13 @@ window.addEventListener("load", () => {
           title: record.title,
           date: record.date,
           rating: record.rating,
-          memo: "",
-          tags: [],
+          memo: record.memo || "",
+          tags: record.tags || [],
         };
-        this.placedItems = [];
-        this.mainImageSrc = "";
+        // canvas_data에서 placedItems / mainImageSrc 복원
+        const canvas = record.raw?.canvas_data || {};
+        this.placedItems = Array.isArray(canvas.placedItems) ? JSON.parse(JSON.stringify(canvas.placedItems)) : [];
+        this.mainImageSrc = canvas.mainImageSrc || "";
         this.selectedDecorationId = null;
         this.editingSavedCardId = null;
         this.resetUndoHistory();
@@ -1491,6 +1583,7 @@ window.addEventListener("load", () => {
       addDecoration(sticker) {
         this.pushUndoState();
         const nextId = Date.now();
+        const shareCategory = sticker.category || "스티커";
         const nextItem = {
           id: nextId,
           type: "sticker",
@@ -1928,6 +2021,28 @@ window.addEventListener("load", () => {
         }
         this.toastMessage = "저장되었습니다";
         this.persistSavedCards();
+        this._clearAutosave();
+
+        // 백엔드 Record.canvas_data 에도 placedItems 저장
+        const backendRecordId = this.records[this.selectedIndex]?.id;
+        if (backendRecordId) {
+          const canvasPayload = {
+            canvas_data: {
+              ...(this.records[this.selectedIndex]?.raw?.canvas_data || {}),
+              placedItems: this.cloneForSave(this.placedItems),
+              mainImageSrc: this.mainImageSrc,
+            },
+          };
+          this.apiFetch(`/api/records/${backendRecordId}/`, {
+            method: "PATCH",
+            body: JSON.stringify(canvasPayload),
+          }).then(() => {
+            // 로컬 records 배열도 동기화
+            if (this.records[this.selectedIndex]?.raw) {
+              this.records[this.selectedIndex].raw.canvas_data = canvasPayload.canvas_data;
+            }
+          }).catch((err) => console.warn("canvas_data 백엔드 저장 실패:", err));
+        }
       },
     },
   }).mount("#app");

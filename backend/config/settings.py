@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     'works',
     'albums',
     'records',
+    'shares',
     # DB 레코드 삭제 시 ImageField/FileField 물리 파일 동반 삭제
     'django_cleanup.apps.CleanupConfig',
 ]
@@ -163,6 +164,11 @@ GOOGLE_BOOKS_API_BASE_URL = env(
     'GOOGLE_BOOKS_API_BASE_URL', default='https://www.googleapis.com/books/v1')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ── GMS (AI 게이트웨이) ───────────────────────────────
+GMS_API_URL = env('GMS_API_URL', default='https://gms.ssafy.io/gmsapi/api.openai.com/v1/chat/completions')
+GMS_API_KEY = env('GMS_KEY', default='')
+GMS_TIMEOUT = env.int('GMS_TIMEOUT', default=30)
 
 # ── DRF ────────────────────────────────────────────
 REST_FRAMEWORK = {
