@@ -43,6 +43,7 @@ class Record(models.Model):
         on_delete=models.PROTECT,
         related_name='records',
     )
+    title = models.CharField('기록 제목', max_length=200, blank=True, default='')
     rating = models.DecimalField('평점', max_digits=3, decimal_places=1,
                                  null=True, blank=True)
     watched_date = models.DateField('감상일', null=True, blank=True)
@@ -115,9 +116,6 @@ class StickerAsset(models.Model):
         ('sticker', '스티커'),
         ('frame', '프레임'),
         ('bubble', '말풍선'),
-        ('icon', '아이콘'),
-        ('background', '배경'),
-        ('tape', '테이프'),
     ]
 
     name = models.CharField('스티커명', max_length=100)

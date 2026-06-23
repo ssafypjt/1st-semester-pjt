@@ -101,18 +101,20 @@ class RecordListSerializer(_OwnershipMixin, _LikeMixin, serializers.ModelSeriali
     user_nickname = serializers.CharField(source='user.nickname', read_only=True)
     is_mine = serializers.SerializerMethodField()
     is_liked = serializers.SerializerMethodField()
-    # 카드 대표 제목 — 사용자가 직접 지은 제목(canvas_data.title) 우선, 없으면 작품명.
-    title = serializers.SerializerMethodField()
+    # 카드 대표 제목 — Record.title 우선, 없으면 작품명 폴백.
+    display_title = serializers.SerializerMethodField()
 
     class Meta:
         model = Record
         fields = ['id', 'user_nickname', 'work', 'work_title', 'work_poster',
-                  'work_type', 'title', 'rating', 'watched_date', 'content',
+                  'work_type', 'title', 'display_title', 'rating', 'watched_date', 'content',
                   'canvas_data', 'visibility',
                   'like_count', 'comment_count', 'created_at', 'is_mine',
                   'is_liked']
 
-    def get_title(self, obj):
+    def get_display_title(self, obj):
+        if obj.title:
+            return obj.title
         cd = obj.canvas_data or {}
         return (cd.get('title') or '').strip() \
             or obj.work.title_ko or obj.work.title
@@ -151,7 +153,7 @@ class RecordDetailSerializer(_OwnershipMixin, _LikeMixin, serializers.ModelSeria
     class Meta:
         model = Record
         fields = ['id', 'user_nickname', 'work', 'work_id', 'work_title',
-                  'work_type_hint',
+                  'work_type_hint', 'title',
                   'rating', 'watched_date', 'content', 'canvas_data', 'status',
                   'visibility', 'like_count', 'comment_count',
                   'decorations', 'favorite_scenes', 'is_mine', 'is_liked',
