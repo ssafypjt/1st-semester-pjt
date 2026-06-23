@@ -124,21 +124,24 @@ def generate_share_card(request, record_id):
     # 4) 이미지 렌더링
     try:
         background_url = template.background_image if template else ''
-        poster_url = record.work.poster_image or ''
+        poster_url = (record.work.poster_image if record.work else '') or ''
 
         # text 메모를 제외한 모든 스티커/말풍선/이미지 아이템
         # 상대 URL → 로컬 파일 경로로 변환
         sticker_items = []
+        sticker_idx = 0
         for item in placed_items:
             if item.get('type', 'sticker') in ('text',):
                 continue
             item = dict(item)  # 복사
-            img_src = item.get('imageSrc', '')
+            item['_sticker_index'] = sticker_idx
+            img_src = item.get('imageSrc') or ''
             if img_src:
                 local = _resolve_image_path(img_src)
                 if local:
                     item['_local_path'] = local
             sticker_items.append(item)
+            sticker_idx += 1
 
         if poster_url and poster_url.startswith('/'):
             local_poster = _resolve_image_path(poster_url)

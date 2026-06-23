@@ -1591,7 +1591,7 @@ export default {
       try {
         const animeTitle = (this.currentRecord.title || this.recordForm.title || "").trim() || "제목 없는 기록";
         const payload = {
-          ...(this.recordForm.workId ? { work_id: this.recordForm.workId } : { work_title: animeTitle }),
+          ...(this.recordForm.workId ? { work_id: this.recordForm.workId } : {}),
           title: this.recordTitle.trim() || animeTitle,
           anime_title: animeTitle,
           rating: this.currentRecord.rating ?? null,

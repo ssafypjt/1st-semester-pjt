@@ -22,14 +22,23 @@ def build_card_prompt(record, templates, placed_items=None) -> str:
     placed_items = placed_items or []
 
     # 1) 감상 기록 데이터
-    record_data = {
-        'record_id': record.id,
-        'work': {
+    if work:
+        work_info = {
             'title': work.title_ko or work.title,
             'title_en': work.title_en,
             'genre': work.genre,
             'poster_url': work.poster_image,
-        },
+        }
+    else:
+        work_info = {
+            'title': record.title or '제목 없음',
+            'title_en': '',
+            'genre': '',
+            'poster_url': '',
+        }
+    record_data = {
+        'record_id': record.id,
+        'work': work_info,
         'rating': str(record.rating) if record.rating else None,
         'watched_date': str(record.watched_date) if record.watched_date else None,
         'content': record.content[:500] if record.content else '',
@@ -62,6 +71,11 @@ def build_card_prompt(record, templates, placed_items=None) -> str:
     # 4) 프롬프트 조립
     prompt = f"""아래 감상 기록을 분석해서 공유 카드 레이아웃 JSON을 생성해줘.
 
+## 핵심 디자인 철학
+사용자가 업로드한 이미지(is_main_image: true)가 카드의 **주인공**.
+포스터(작품 커버)는 작은 폴라로이드로 곁들이는 보조 요소.
+스티커·말풍선은 이미지를 꾸며주는 역할.
+
 ## 감상 기록
 {json.dumps(record_data, ensure_ascii=False, indent=2)}
 
@@ -72,62 +86,47 @@ def build_card_prompt(record, templates, placed_items=None) -> str:
 {memo_instruction}
 
 ## 배치 규칙
-카드는 1080×1920px이며 4개 존으로 나뉜다. 각 존 범위 안에서 자유롭게 배치해.
+카드는 1080×1920px, 4개 존으로 나뉜다.
 
 ### Zone 1 — 헤더 (y: 0~140)
-- 날짜를 좌측에 배치 (감상일 또는 오늘 날짜)
-- 우측에는 덕꾸 로고가 자동 삽입되므로 x=800 이후 비워둬
+- 날짜를 좌측에 배치. 우측 x=800 이후는 로고 자동 삽입.
 
-### Zone 2 — 콜라주 (y: 140~1100)
-- 포스터 이미지 배치 (x, y, width, height 결정)
-- frame 스타일 선택: "none" | "polaroid" | "rounded" | "shadow"
-- 포스터 아래 캐릭터/작품명 라벨 (선택사항)
-- 사용자 스티커 {record_data['sticker_count']}개를 포스터 주변에 배치해야 함 (stickers 배열로 각각 좌표 지정)
+### Zone 2 — 메인 이미지 + 포스터 (y: 140~1200)
+이 영역의 **주인공은 사용자 이미지**(is_main_image: true).
+
+#### ★ 메인 이미지 (is_main_image: true) — 주인공
+- Zone 2 전체를 **최대한 크게** 차지 (최소 width 600, height 500).
+- 여러 장이면 Zone 2를 나눠서 각각 크게. 겹치면 안 됨.
+- 다이어리 상대 위치 반영 (왼쪽→카드 왼쪽, 오른쪽→카드 오른쪽).
+
+#### 포스터 (collage.poster) — 보조 요소
+- width 160~320px으로 **작게**. 메인 이미지를 가리지 않는 빈 구석에 배치.
+- frame은 "polaroid" 고정.
 
 ### 스티커 재배치 (중요!)
-- 입력 데이터의 stickers 배열에 있는 각 스티커를 카드에 재배치해.
-- 각 스티커의 index(0부터)에 대응하는 x, y, width, height, rotation을 응답 stickers 배열에 포함해.
-- **모든 스티커의 y좌표는 반드시 140 이상이어야 한다 (Zone 1 헤더 영역 침범 금지).**
-- **다이어리 원본 배치를 참고해서 재배치해.** 각 스티커의 x_pct, y_pct는 다이어리에서의 상대 위치(%)이다. 이 상대 관계를 최대한 유지하되 카드 크기(1080×1920)에 맞게 스케일해. 예: 다이어리에서 왼쪽 위에 있던 스티커는 카드에서도 왼쪽 위, 오른쪽 아래에 있던 스티커는 카드에서도 오른쪽 아래.
+- stickers 배열의 각 스티커를 index(0부터) 기준으로 x, y, width, height, rotation 지정.
+- **y ≥ 140** (헤더 침범 금지).
+- 다이어리 원본 x_pct, y_pct 상대 위치를 카드 크기에 맞게 스케일.
 
-#### 메인 이미지 (is_main_image: true)
-- 사용자가 업로드한 장면 캡처/이미지이므로 **가장 중요한 요소**다.
-- Zone 2(y: 140~1100) 내에서 **공백을 최대한 채우도록 크게** 배치해.
-- 여러 메인 이미지가 있으면 Zone 2 공간을 나눠서 각각 크게 배치. 서로 겹치면 안 됨.
-- 다이어리에서의 상대 위치를 반영: 왼쪽에 있던 이미지는 카드 왼쪽, 오른쪽에 있던 이미지는 카드 오른쪽.
-- 포스터, 다른 메인 이미지, 메모 영역과 겹치지 않게.
-- width, height를 최소 300px 이상으로 설정.
-
-#### 일반 스티커 (has_image: true, is_main_image 없음 / 아이콘 스티커)
-- 아이콘 스티커(icon 텍스트): 60~100px 크기로 자유롭게 배치.
-- 이미지 스티커(기본 스티커): 100~200px 크기로 자유롭게 배치.
-- 다이어리 원본 배치의 상대 위치를 참고해서 비슷한 위치에 배치.
-- **단, 메인 이미지의 중심 70% 영역에는 스티커를 배치하지 마.** 예: 메인 이미지가 (x=100, y=200, w=400, h=400)이면 중심 70% 보호 영역은 (x=160, y=260, w=280, h=280). 이 영역 안에 스티커가 들어가면 안 됨. 메인 이미지 가장자리 30%에는 살짝 걸칠 수 있음.
-- 스티커끼리도 겹치지 않게.
+#### 일반 스티커 / 이미지 스티커 — 꾸미기 요소
+- 아이콘: 60~100px, 이미지 스티커: 100~200px.
+- 메인 이미지 중심 70% 보호 영역 배치 금지. 가장자리 30%만 가능.
+- rotation: -15~15도. 메모지 테두리와 10~20% 겹쳐도 됨.
 
 #### 말풍선 (type: "bubble")
-- 말풍선 안의 텍스트가 **절대 잘리지 않도록** 충분한 크기를 확보해.
-- 한글 1글자당 약 width 28px, height 34px로 계산. 예: 4글자 한 줄이면 최소 width 140px.
-- 텍스트가 길면 여러 줄로 나뉘는 걸 고려해서 height를 충분히 잡아.
-- 최소 width 160px, height 80px.
-- font_size 필드를 추가해서 말풍선 크기에 맞는 글꼴 크기를 지정 (16~28 범위).
+- 텍스트 잘림 방지: 한글 1글자 ≈ 28×34px. 최소 160×80px.
+- font_size 필드 반드시 포함 (16~28).
 
-### Zone 3 — 메모 (y: 1100~1500)
-- 감상문 텍스트를 메모지 느낌으로 배치
-- 메모 배경색, 테두리색, 텍스트색 결정
-- font_size 범위: 24~34px
+### Zone 3 — 메모 (y: 1200~1560)
+- 감상문을 메모지 느낌으로. font_size: 24~34px.
 
-### Zone 4 — 정보 (y: 1500~1920)
-- 작품 제목 (굵게, 중앙 정렬)
-- 별점 (강조색으로 크게)
-- 태그 목록 (작게, 해시태그 형식)
+### Zone 4 — 정보 (y: 1560~1920)
+- 작품 제목 (굵게, 중앙), 별점, 해시태그.
 
 ## 배경 스타일
-작품의 장르와 태그 분위기에 맞게 배경색을 결정해.
-- 힐링/감성 → 따뜻한 베이지·파스텔 계열
-- 액션/다크 → 어두운 톤
-- 판타지/몽환 → 보라·파랑 그라데이션 느낌
-- 일상/코미디 → 밝은 노란·분홍 계열
+장르·분위기에 맞게 배경색 결정.
+- 힐링/감성 → 베이지·파스텔 | 액션/다크 → 어두운 톤
+- 판타지/몽환 → 보라·파랑 | 일상/코미디 → 노란·분홍
 
 JSON만 응답해. 다른 텍스트 없이.
 """
@@ -167,7 +166,7 @@ def _is_main_image(item: dict) -> bool:
     /api/records/uploads/ 경로면 사용자가 직접 올린 이미지 → 메인 이미지.
     기본 스티커(/static/ 등)는 메인이 아님.
     """
-    src = item.get('imageSrc', '')
+    src = item.get('imageSrc') or ''
     return '/api/records/uploads/' in src
 
 

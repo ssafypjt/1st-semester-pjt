@@ -95,9 +95,9 @@ class _LikeMixin:
 
 class RecordListSerializer(_OwnershipMixin, _LikeMixin, serializers.ModelSerializer):
     """목록용 (work 정보 일부 포함)."""
-    work_title = serializers.CharField(source='work.title_ko', read_only=True)
-    work_poster = serializers.CharField(source='work.poster_image', read_only=True)
-    work_type = serializers.CharField(source='work.work_type', read_only=True)
+    work_title = serializers.CharField(source='work.title_ko', read_only=True, default='')
+    work_poster = serializers.CharField(source='work.poster_image', read_only=True, default='')
+    work_type = serializers.CharField(source='work.work_type', read_only=True, default='')
     user_nickname = serializers.CharField(source='user.nickname', read_only=True)
     is_mine = serializers.SerializerMethodField()
     is_liked = serializers.SerializerMethodField()
@@ -116,8 +116,12 @@ class RecordListSerializer(_OwnershipMixin, _LikeMixin, serializers.ModelSeriali
         if obj.title:
             return obj.title
         cd = obj.canvas_data or {}
-        return (cd.get('title') or '').strip() \
-            or obj.work.title_ko or obj.work.title
+        canvas_title = (cd.get('title') or '').strip()
+        if canvas_title:
+            return canvas_title
+        if obj.work:
+            return obj.work.title_ko or obj.work.title
+        return '제목 없음'
 
 
 class RecordDetailSerializer(_OwnershipMixin, _LikeMixin, serializers.ModelSerializer):
@@ -165,24 +169,25 @@ class RecordDetailSerializer(_OwnershipMixin, _LikeMixin, serializers.ModelSeria
         title = (validated_data.pop('work_title', '') or '').strip()
         work_type = validated_data.pop('work_type_hint', 'anime')
         if title:
-            # title_ko + work_type 복합 키로 동명이작 구분.
-            # 2단계에서 외부 API 연동 시 source + external_id 기반으로 교체 예정.
-            work, _ = Work.objects.get_or_create(
-                title_ko=title,
-                work_type=work_type,
-                defaults={'title': title},
-            )
-            validated_data['work'] = work
+            # AniList API로 등록된 기존 Work만 조회한다.
+            # 매칭 실패 시 work=None — 사용자가 직접 입력한 제목으로
+            # Work를 자동 생성하지 않는다.
+            try:
+                work = Work.objects.get(title_ko=title, work_type=work_type)
+                validated_data['work'] = work
+            except Work.DoesNotExist:
+                # title만으로는 없을 수도 있으므로 title 필드로도 시도
+                try:
+                    work = Work.objects.get(title=title, work_type=work_type)
+                    validated_data['work'] = work
+                except Work.DoesNotExist:
+                    pass  # work 없이 저장 (work=None)
         else:
             validated_data.pop('work_type_hint', None)  # work_id 경로면 제거
 
     def validate(self, attrs):
-        if self.instance is None:
-            has_title = bool((attrs.get('work_title') or '').strip())
-            has_work = attrs.get('work') is not None
-            if not has_title and not has_work:
-                raise serializers.ValidationError(
-                    {'work_title': '작품명을 입력해주세요.'})
+        # work는 선택사항 — AniList에서 선택한 경우만 연결됨.
+        # work 없이도 기록 작성 가능.
         return attrs
 
     def create(self, validated_data):

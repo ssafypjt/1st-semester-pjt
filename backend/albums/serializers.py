@@ -19,7 +19,14 @@ class AlbumRecordSerializer(serializers.ModelSerializer):
     record의 핵심 정보(id, 작품명, 평점)를 함께 반환해 프론트가 추가 요청 없이 UI를 그릴 수 있도록 한다.
     """
     record_id = serializers.IntegerField(source='record.id', read_only=True)
-    work_title = serializers.CharField(source='record.work.title_ko', read_only=True)
+    work_title = serializers.SerializerMethodField()
+
+    def get_work_title(self, obj):
+        if obj.record and obj.record.work:
+            return obj.record.work.title_ko or obj.record.work.title
+        if obj.record and obj.record.title:
+            return obj.record.title
+        return '제목 없음'
     rating = serializers.DecimalField(source='record.rating', max_digits=3,
                                       decimal_places=1, read_only=True)
 

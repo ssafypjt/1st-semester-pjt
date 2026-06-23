@@ -42,6 +42,7 @@ class Record(models.Model):
         'works.Work',
         on_delete=models.PROTECT,
         related_name='records',
+        null=True, blank=True,
     )
     title = models.CharField('기록 제목', max_length=200, blank=True, default='')
     rating = models.DecimalField('평점', max_digits=3, decimal_places=1,
