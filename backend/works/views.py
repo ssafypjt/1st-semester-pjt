@@ -8,7 +8,7 @@ from rest_framework.response import Response
 
 from .models import Work
 from .serializers import WorkAdminSerializer, WorkSerializer
-from .services.anilist import search as anilist_search
+from .services.anilist import search as anilist_search, fetch_tags as anilist_fetch_tags
 from .services.base import ExternalAPIError
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ class WorkViewSet(viewsets.ModelViewSet):
     search_fields = ["title", "title_ko", "title_en", "genre", "work_type"]
 
     def get_permissions(self):
-        if self.action in ("list", "retrieve", "autocomplete", "select_work"):
+        if self.action in ("list", "retrieve", "autocomplete", "select_work", "tags"):
             return [AllowAny()]
         return [IsAdminUser()]
 
@@ -145,3 +145,38 @@ class WorkViewSet(viewsets.ModelViewSet):
             description=data.get("description", ""),
         )
         return Response(WorkSerializer(work).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get"], url_path="tags")
+    def tags(self, request, pk=None):
+        """작품의 AniList 태그 조회.
+
+        GET /api/works/<id>/tags/
+
+        1) DB에 캐싱된 태그가 있으면 바로 반환 (빠름)
+        2) 없으면 AniList API 호출 → DB에 저장 → 반환
+        """
+        work = self.get_object()
+
+        # 1) DB 캐시 확인
+        if work.anilist_tags:
+            return Response(work.anilist_tags)
+
+        # 2) AniList 연동 작품이 아니면 에러
+        if work.source != 'anilist' or not work.external_id:
+            return Response(
+                {'detail': 'AniList 연동 작품이 아닙니다.', 'genres': [], 'tags': []},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 3) AniList API 호출 → DB 캐싱
+        try:
+            result = anilist_fetch_tags(work.external_id)
+            work.anilist_tags = result
+            work.save(update_fields=['anilist_tags'])
+            return Response(result)
+        except ExternalAPIError as e:
+            logger.warning("AniList 태그 조회 실패 (work=%s): %s", pk, e)
+            return Response(
+                {'detail': str(e), 'genres': [], 'tags': []},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )

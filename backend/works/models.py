@@ -28,6 +28,10 @@ class Work(models.Model):
                                    validators=[validate_poster_url])
     description = models.TextField("작품 설명", blank=True)
 
+    # AniList 태그 캐시 — 첫 조회 시 API에서 가져와 저장, 이후 DB에서 반환
+    # 형식: {"genres": ["Action", ...], "tags": [{"name": "...", "category": "...", "rank": 90}, ...]}
+    anilist_tags = models.JSONField("AniList 태그 캐시", default=None, null=True, blank=True)
+
     class Meta:
         db_table = "work"
         # release_date NULL 작품을 맨 뒤로 — SQLite, PostgreSQL 모두 동일 동작 보장

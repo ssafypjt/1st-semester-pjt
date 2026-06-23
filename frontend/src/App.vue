@@ -1683,4 +1683,9 @@ export default {
         this._clearAutosave();
       } catch (e) {
         console.warn("임시저장 복원 실패:", e);
-        
+        this._clearAutosave();
+      }
+    },
+  },
+};
+</script>

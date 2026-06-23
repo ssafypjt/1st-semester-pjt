@@ -10,6 +10,7 @@
       <label class="autocomplete-wrap">
         <span>작품명</span>
         <input
+          v-if="!selectedWork"
           ref="titleInput"
           :value="recordForm.title"
           placeholder="애니메이션 제목 검색 (한글/영어)"
@@ -71,6 +72,7 @@
         <input type="range" min="0" max="10" step="0.5" :value="recordForm.rating" @input="updateField('rating', Number($event.target.value))" />
         <b>{{ recordForm.rating }} / 10 {{ stars(recordForm.rating) }}</b>
       </label>
+      <p v-if="submitError" class="submit-error">{{ submitError }}</p>
       <div class="modal-actions">
         <button type="button" @click="$emit('close')">취소</button>
         <button class="primary" type="button" @click="handleSubmit">
@@ -112,6 +114,7 @@ export default {
       selectedWork: null,
       koTitleInput: "",
       searchTimer: null,
+      submitError: "",
     };
   },
   methods: {
@@ -185,6 +188,11 @@ export default {
       }
     },
     handleSubmit() {
+      if (!this.selectedWork) {
+        this.submitError = '작품을 검색해서 선택해주세요.';
+        return;
+      }
+      this.submitError = '';
       if (this.selectedWork && this.koTitleInput && !this.selectedWork.title_ko) {
         this.apiFetch("/api/works/select/", {
           method: "POST",
