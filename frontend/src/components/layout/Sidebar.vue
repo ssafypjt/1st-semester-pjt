@@ -14,7 +14,7 @@
         type="button"
         @click="$emit('navigate', item)"
       >
-        <span>{{ navIcon(item) }}</span>{{ item }}
+        <span>{{ navIcon(item) }}</span>{{ navLabel(item) }}
       </button>
     </nav>
     <div class="today">
@@ -52,7 +52,19 @@ export default {
       type: Function,
       required: true,
     },
+    hasRecordInProgress: {
+      type: Boolean,
+      default: false,
+    },
   },
   emits: ["navigate"],
+  methods: {
+    navLabel(item) {
+      if (item === "기록 작성") {
+        return this.hasRecordInProgress ? "기록 작성 중" : "+ 새 기록";
+      }
+      return item;
+    },
+  },
 };
 </script>

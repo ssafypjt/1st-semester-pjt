@@ -78,6 +78,7 @@
         :active-page="activePage"
         :recent-tags="recentTags"
         :nav-icon="navIcon"
+        :has-record-in-progress="hasRecordInProgress"
         @navigate="navigatePage"
       />
 
@@ -99,9 +100,23 @@
           <section class="editor-zone">
             <div class="section-head">
               <div>
-                <h2>새 기록</h2>
+                <input
+                  class="record-title-input"
+                  type="text"
+                  v-model="recordTitle"
+                  placeholder="기록 제목을 입력하세요"
+                  maxlength="100"
+                />
               </div>
               <div class="toolset">
+                <button
+                  class="tool-action close-record-action"
+                  type="button"
+                  title="기록 닫기"
+                  @click="confirmCloseRecord"
+                >
+                  <span>✕</span><b>닫기</b>
+                </button>
                 <button
                   class="tool-action"
                   type="button"
@@ -114,10 +129,7 @@
                 <button class="tool-action memo-action" type="button" title="메모 추가" @click="addTextMemo">
                   <span>T</span><b>메모 추가</b>
                 </button>
-                <div class="visibility-selector">
-                  <button type="button" class="vis-btn" :class="{ active: recordVisibility === 'private' }" title="나만 보기" @click="recordVisibility = 'private'">🔒 나만</button>
-                  <button type="button" class="vis-btn" :class="{ active: recordVisibility === 'public' }" title="전체 공개" @click="recordVisibility = 'public'">🌐 공개</button>
-                </div>
+                <!-- 공개/비공개 선택 제거됨 -->
                 <button class="primary small tool-action save-action" type="button" title="저장" @click="saveCard">
                   <span class="save-icon"></span><b>저장</b>
                 </button>
@@ -161,7 +173,16 @@
                   @pointerdown="startDrag($event, item)"
                 >
                   <div class="placed-sticker" :class="item.tone" :style="stickerStyle(item)">
-                    <div v-if="item.type === 'text'" class="memo-editor">
+                    <div v-if="item.type === 'bubble'" class="bubble-editor" :class="item.bubbleType"
+                      :style="bubbleEditorStyle(item)">
+                      <textarea
+                        v-model="item.text"
+                        :style="{ fontSize: `${item.fontSize || 14}px`, color: item.textColor || '#342a3f' }"
+                        placeholder="내용을 입력하세요"
+                        @click.stop="selectDecoration(item.id)"
+                      ></textarea>
+                    </div>
+                    <div v-else-if="item.type === 'text'" class="memo-editor">
                       <textarea
                         v-model="item.text"
                         :style="{ fontSize: `${item.fontSize || 15}px` }"
@@ -218,6 +239,54 @@
               <b>100%</b>
               <button type="button">＋</button>
             </div>
+
+            <!-- 말풍선 편집 툴바 -->
+            <div v-if="selectedBubbleItem" class="bubble-toolbar">
+              <div class="bt-section">
+                <span class="bt-label">글꼴 크기</span>
+                <div class="bt-font-size">
+                  <button type="button" @click="changeBubbleFontSize(-1)">−</button>
+                  <span>{{ selectedBubbleItem.fontSize || 14 }}px</span>
+                  <button type="button" @click="changeBubbleFontSize(1)">+</button>
+                </div>
+              </div>
+              <div class="bt-section">
+                <span class="bt-label">배경색</span>
+                <div class="bt-colors">
+                  <button
+                    v-for="c in bubblePresetColors"
+                    :key="'bg-'+c"
+                    class="bt-swatch"
+                    :class="{ active: (selectedBubbleItem.bgColor || '#ffffff') === c }"
+                    :style="{ background: c }"
+                    type="button"
+                    @click="selectedBubbleItem.bgColor = c"
+                  ></button>
+                  <label class="bt-custom-color">
+                    <input type="color" :value="selectedBubbleItem.bgColor || '#ffffff'" @input="selectedBubbleItem.bgColor = $event.target.value" />
+                    <span class="bt-swatch custom" :style="{ background: selectedBubbleItem.bgColor || '#ffffff' }">⋯</span>
+                  </label>
+                </div>
+              </div>
+              <div class="bt-section">
+                <span class="bt-label">테두리색</span>
+                <div class="bt-colors">
+                  <button
+                    v-for="c in bubblePresetBorders"
+                    :key="'bd-'+c"
+                    class="bt-swatch"
+                    :class="{ active: (selectedBubbleItem.borderColor || '#b49cd8') === c }"
+                    :style="{ background: c }"
+                    type="button"
+                    @click="selectedBubbleItem.borderColor = c"
+                  ></button>
+                  <label class="bt-custom-color">
+                    <input type="color" :value="selectedBubbleItem.borderColor || '#b49cd8'" @input="selectedBubbleItem.borderColor = $event.target.value" />
+                    <span class="bt-swatch custom" :style="{ background: selectedBubbleItem.borderColor || '#b49cd8' }">⋯</span>
+                  </label>
+                </div>
+              </div>
+            </div>
           </section>
 
           <aside class="right-rail">
@@ -227,6 +296,7 @@
               :visible-decorations="visibleDecorations"
               @change-category="activeStickerCategory = $event"
               @add-decoration="addDecoration"
+              @upload-sticker="handleStickerUpload"
             />
 
             <image-upload-panel @image-upload="handleImageUpload" />
@@ -287,13 +357,13 @@
             <article v-for="rec in feedRecords" :key="rec.id" class="feed-card">
               <header class="feed-card-header">
                 <div class="feed-user">
-                  <span class="feed-avatar" aria-hidden="true">{{ feedAuthorInitial(rec) }}</span>
-                  <b>{{ feedAuthorName(rec) }}</b>
+                  <span class="feed-avatar">{{ (rec.user_nickname || '?')[0] }}</span>
+                  <b>{{ rec.user_nickname }}</b>
                 </div>
                 <time>{{ formatFeedDate(rec.created_at) }}</time>
               </header>
               <div class="feed-card-body">
-                <img v-if="normalizeImageUrl(rec.work_poster)" class="feed-poster" :src="normalizeImageUrl(rec.work_poster)" :alt="rec.work_title" />
+                <img v-if="rec.work_poster" class="feed-poster" :src="rec.work_poster" :alt="rec.work_title" />
                 <div class="feed-info">
                   <h3>{{ rec.title || rec.work_title || '제목 없음' }}</h3>
                   <p v-if="rec.work_title" class="feed-work">{{ rec.work_title }}</p>
@@ -449,16 +519,6 @@ import { canvasTools, nav, recentTags } from "./constants/navigation";
 import { decorations, stickerCategories } from "./constants/stickers";
 import { defaultAnalysis } from "./constants/defaultAnalysis";
 
-function initialPageFromPath() {
-  const path = window.location.pathname;
-  if (path === "/deokkku/" || path === "/deokkku/home/") return "홈";
-  if (path === "/deokkku/my_album/" || path === "/diaries/") return "내 앨범";
-  if (path.startsWith("/diaries/")) return "내 앨범";
-  if (path === "/reviews/" || path.startsWith("/reviews/")) return "리뷰";
-  if (path === "/mypage/") return "마이페이지";
-  return "기록 작성";
-}
-
 export default {
   name: "App",
   components: {
@@ -478,7 +538,7 @@ export default {
       simpleLogoUrl,
       mainLogoUrl,
       query: "",
-      activePage: initialPageFromPath(),
+      activePage: localStorage.getItem("deokkku:activePage") || "내 앨범",
       _dirty: false,
       activeStickerCategory: "전체",
       isRecordModalOpen: false,
@@ -502,6 +562,9 @@ export default {
       feedRecords: [],
       isFeedLoading: false,
       recordVisibility: "private",
+      recordTitle: "",
+      bubblePresetColors: ['#ffffff', '#fff5f5', '#fff8e1', '#e8f5e9', '#e3f2fd', '#f3e5f5', '#fce4ec', '#ede7f6'],
+      bubblePresetBorders: ['#b49cd8', '#e57373', '#ffb74d', '#81c784', '#64b5f6', '#ba68c8', '#f06292', '#333333'],
       undoHistory: [],
       layerZIndex: 0,
       lastSaveAt: 0,
@@ -550,7 +613,39 @@ export default {
         mode: 'login',  // 'login' | 'signup'
       },
 
-      // ── 공유 카드 ──
+      // ── 피드 좋아요 토글 ──
+    async toggleFeedLike(record) {
+      if (!this.currentUser) return;
+      try {
+        const data = await this.apiFetch(`/api/records/${record.id}/like/`, { method: "POST" });
+        record.is_liked = data.liked;
+        record.like_count = data.like_count;
+      } catch (error) {
+        console.error("좋아요 실패:", error);
+      }
+    },
+
+    openFeedRecord(record) {
+      const card = this.apiRecordToSavedCard(record);
+      this.openSavedCard(card);
+    },
+
+    formatFeedDate(dateStr) {
+      if (!dateStr) return "";
+      const d = new Date(dateStr);
+      const now = new Date();
+      const diff = now - d;
+      const mins = Math.floor(diff / 60000);
+      if (mins < 1) return "방금 전";
+      if (mins < 60) return `${mins}분 전`;
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) return `${hours}시간 전`;
+      const days = Math.floor(hours / 24);
+      if (days < 7) return `${days}일 전`;
+      return d.toLocaleDateString("ko-KR");
+    },
+
+    // ── 공유 카드 ──
       isShareModalOpen: false,   // 공유 모달 열림
       shareCards: [],            // 생성된 공유 카드 목록
       isGeneratingCard: false,   // AI 카드 생성 중
@@ -571,6 +666,9 @@ export default {
     },
     isCanvasEmpty() {
       return this.placedItems.length === 0 && !this.mainImageSrc;
+    },
+    hasRecordInProgress() {
+      return this.placedItems.length > 0 || !!this.mainImageSrc || !!this.currentRecordId;
     },
     canUndo() {
       return this.undoHistory.length > 0;
@@ -618,14 +716,29 @@ export default {
       }));
     },
     visibleDecorations() {
-      // API에서 로드된 유저 스티커가 있으면 우선 사용, 없으면 하드코딩 폴백
-      const source = this.stickersLoaded && this.userStickers.length > 0
-        ? this.userStickers
-        : this.decorations;
+      // 기본 스티커 + 유저 업로드 스티커 합산
+      var source = this.decorations.slice();
+      if (this.stickersLoaded && this.userStickers.length > 0) {
+        // 기본 스티커와 중복되지 않는 유저 스티커만 추가
+        var existingIds = {};
+        for (var i = 0; i < source.length; i++) {
+          if (source[i].id) existingIds[source[i].id] = true;
+        }
+        for (var j = 0; j < this.userStickers.length; j++) {
+          if (!existingIds[this.userStickers[j].id]) {
+            source.push(this.userStickers[j]);
+          }
+        }
+      }
       if (this.activeStickerCategory === "전체") {
         return source;
       }
-      return source.filter((item) => item.category === this.activeStickerCategory);
+      return source.filter(function(item) { return item.category === this.activeStickerCategory; }.bind(this));
+    },
+    selectedBubbleItem() {
+      if (!this.selectedDecorationId) return null;
+      var item = this.placedItems.find(function(i) { return i.id === this.selectedDecorationId; }.bind(this));
+      return (item && item.type === 'bubble') ? item : null;
     },
     pageDescription() {
       const descriptions = {
@@ -676,7 +789,9 @@ export default {
     });
 
     this.loadRepresentativeBadges();
-    this.checkAuth().then(() => {
+    this.checkAuth();
+    this.loadFeedRecords();
+    this.loadSavedCards().then(() => {
       this._checkAutosaveRestore();
       this.$nextTick(() => { this._dirty = false; });
     });
@@ -695,15 +810,9 @@ export default {
         this.resetProfileForm();
         this.loadRepresentativeBadges();
         this.loadUserStickers();
-        await Promise.all([
-          this.loadSavedCards(),
-          this.loadFeedRecords(),
-        ]);
       } catch (error) {
         console.error("인증 확인 실패 — 로그인 필요:", error);
         this.currentUser = null;
-        this.savedCards = [];
-        this.feedRecords = [];
       } finally {
         this.isCheckingAuth = false;
       }
@@ -989,6 +1098,11 @@ export default {
       this.isLoggingOut = false;
     },
     navigatePage(page) {
+      // "기록 작성" 클릭 시: 작성 중인 내용이 없으면 새 기록 모달 열기
+      if (page === "기록 작성" && !this.hasRecordInProgress) {
+        this.openRecordModal("create");
+        return;
+      }
       this.activePage = page;
       try { localStorage.setItem("deokkku:activePage", page); } catch (e) { /* ignore */ }
     },
@@ -1022,11 +1136,11 @@ export default {
         width: item.width ? `${item.width}px` : null,
         height: item.height ? `${item.height}px` : null,
         zIndex: item.zIndex || 1,
-        "--item-scale": (item.type === "text" || item.type === "image") ? 1 : item.scale || 1,
+        "--item-scale": (item.type === "text" || item.type === "image" || item.type === "bubble") ? 1 : item.scale || 1,
       };
     },
     stickerStyle(item) {
-      const scale = (item.type === "text" || item.type === "image") ? 1 : item.scale || 1;
+      const scale = (item.type === "text" || item.type === "image" || item.type === "bubble") ? 1 : item.scale || 1;
       return {
         transform: `rotate(${item.rotate || 0}deg) scale(${scale})`,
       };
@@ -1039,17 +1153,6 @@ export default {
     },
     cloneForSave(value) {
       return JSON.parse(JSON.stringify(value));
-    },
-    normalizeImageUrl(value) {
-      const rawValue = String(value || "").trim();
-      if (!rawValue) return "";
-      if (rawValue.startsWith("/") || rawValue.startsWith("data:image/")) return rawValue;
-
-      const markdownMatch = rawValue.match(/\[[^\]]*\]\((https?:\/\/[^)]+)\)/);
-      if (markdownMatch) return markdownMatch[1];
-
-      const urlMatch = rawValue.match(/https?:\/\/[^\s)]+/);
-      return urlMatch ? urlMatch[0] : "";
     },
     canvasSnapshot() {
       return {
@@ -1094,18 +1197,88 @@ export default {
     clearDecorationSelection() {
       this.selectedDecorationId = null;
     },
+    _findNextGridSlot() {
+      // 기존 스티커들이 차지하는 그리드 슬롯을 파악하고 비어있는 첫 슬롯 반환
+      var cols = 8;
+      var cellW = 8;    // % 단위
+      var cellH = 8;
+      var startX = 6;
+      var startY = 18;
+      var stickers = this.placedItems.filter(function(i) { return i.type !== 'text'; });
+      var occupied = {};
+      for (var i = 0; i < stickers.length; i++) {
+        var s = stickers[i];
+        // 현재 위치에서 가장 가까운 그리드 슬롯 계산
+        var c = Math.round((s.x - startX) / cellW);
+        var r = Math.round((s.y - startY) / cellH);
+        if (c >= 0 && c < cols && r >= 0) {
+          occupied[r + ',' + c] = true;
+        }
+      }
+      // 비어있는 첫 슬롯 찾기
+      for (var slot = 0; slot < 200; slot++) {
+        var col = slot % cols;
+        var row = Math.floor(slot / cols);
+        if (!occupied[row + ',' + col]) {
+          return { x: startX + col * cellW, y: startY + row * cellH };
+        }
+      }
+      return { x: startX, y: startY };
+    },
+    bubbleEditorStyle(item) {
+      var style = {};
+      if (item.bgColor) style.background = item.bgColor;
+      if (item.borderColor) {
+        style.borderColor = item.borderColor;
+        style['--bubble-border'] = item.borderColor;
+      }
+      return style;
+    },
+    changeBubbleFontSize(delta) {
+      var item = this.selectedBubbleItem;
+      if (!item) return;
+      var size = (item.fontSize || 14) + delta;
+      if (size < 10) size = 10;
+      if (size > 36) size = 36;
+      item.fontSize = size;
+    },
     addDecoration(sticker) {
       console.log('[DEBUG] addDecoration called:', sticker, 'placedItems before:', this.placedItems.length);
       this.pushUndoState();
       const nextId = Date.now();
+      var pos = this._findNextGridSlot();
+
+      // 말풍선 타입: 텍스트 편집 가능
+      if (sticker.bubbleType) {
+        const nextItem = {
+          id: nextId,
+          type: "bubble",
+          bubbleType: sticker.bubbleType,  // "normal" or "thought"
+          tone: sticker.tone,
+          text: "",
+          icon: sticker.icon,
+          x: pos.x,
+          y: pos.y,
+          rotate: 0,
+          scale: 1,
+          width: 180,
+          height: 100,
+          fontSize: 14,
+          zIndex: this.nextLayerZIndex(),
+        };
+        this.placedItems.push(nextItem);
+        this.selectedDecorationId = nextId;
+        return;
+      }
+
       const nextItem = {
         id: nextId,
         icon: sticker.icon,
         tone: sticker.tone,
         imageSrc: sticker.imageSrc || null,
-        x: 24 + (this.placedItems.length * 11) % 52,
-        y: 20 + (this.placedItems.length * 17) % 56,
-        rotate: -14 + (this.placedItems.length * 9) % 28,
+        x: pos.x,
+        y: pos.y,
+        rotate: 0,
         scale: sticker.imageSrc ? 0.72 : sticker.icon.length > 1 ? 0.86 : 1.08,
         zIndex: this.nextLayerZIndex(),
       };
@@ -1204,11 +1377,12 @@ export default {
     startResize(event, item) {
       event.preventDefault();
       this.selectDecoration(item.id);
-      if (item.type === "text") {
+      if (item.type === "text" || item.type === "bubble") {
         this.resizing = {
           item, mode: "box",
           startX: event.clientX, startY: event.clientY,
-          startWidth: item.width || 190, startHeight: item.height || 150,
+          startWidth: item.width || (item.type === "bubble" ? 180 : 190),
+          startHeight: item.height || (item.type === "bubble" ? 100 : 150),
         };
       } else if (item.type === "image") {
         this.resizing = {
@@ -1299,7 +1473,6 @@ export default {
         title: this.recordForm.title || "제목 없는 기록",
         date: this.formatDisplayDate(this.recordForm.date),
         rating: this.recordForm.rating,
-        workId: this.recordForm.workId || null,
         memo: "새롭게 작성한 감상 기록입니다.",
         tags: [],
       };
@@ -1307,6 +1480,7 @@ export default {
         // 신규 기록이면 백엔드 ID 초기화 (저장 시 POST)
         this.currentRecordId = null;
         this.recordVisibility = "private";
+        this.recordTitle = "";
         this.placedItems = [];
         this.mainImageSrc = "";
         this.selectedDecorationId = null;
@@ -1321,28 +1495,15 @@ export default {
     apiRecordToSavedCard(record) {
       const cd = record.canvas_data || {};
       const placedItems = cd.placed_items || [];
-      const title = (cd.title || "").trim() || record.work_title || record.title || record.anime_title || "제목 없는 기록";
-      const rawDate = record.watched_date || record.created_at || "";
-      const watchedDate = rawDate ? rawDate.slice(0, 10).replaceAll("-", ".") : "";
-      const imageCandidates = [
-        cd.main_image_src,
-        record.work_poster,
-        record.work?.poster_image,
-        record.poster,
-        record.image,
-      ]
-        .map((value) => this.normalizeImageUrl(value))
-        .filter(Boolean)
-        .filter((value, index, list) => list.indexOf(value) === index);
-      const imageSrc = imageCandidates[0] || "";
-
+      const title = (cd.title || "").trim() || record.work_title || record.anime_title || "제목 없는 기록";
+      const watchedDate = record.watched_date
+        ? record.watched_date.replaceAll("-", ".")
+        : "";
       return {
         id: record.id,
         title,
         date: watchedDate,
         rating: record.rating ?? 0,
-        imageSrc,
-        imageCandidates,
         workId: record.work?.id || record.work || null,
         visibility: record.visibility || "private",
         memoCount: placedItems.filter((i) => i.type === "text").length,
@@ -1357,7 +1518,7 @@ export default {
             tags: [],
           },
           placedItems,
-          mainImageSrc: imageSrc,
+          mainImageSrc: cd.main_image_src || "",
           analysis: cd.analysis || null,
         },
       };
@@ -1367,8 +1528,7 @@ export default {
     async loadSavedCards() {
       try {
         const data = await this.apiFetch("/api/records/?mine=1");
-        const results = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : []);
-
+        const results = Array.isArray(data) ? data : (data.results || []);
         this.savedCards = results.map((r) => this.apiRecordToSavedCard(r));
       } catch (error) {
         console.error("기록 목록 불러오기 실패:", error);
@@ -1392,6 +1552,36 @@ export default {
     },
 
     // ── 저장 (신규: POST / 수정: PATCH) ──────────────────────────────────
+    async confirmCloseRecord() {
+      // 내용이 없으면 바로 닫기
+      if (this.isCanvasEmpty && !this.currentRecordId) {
+        this.closeRecord();
+        return;
+      }
+      // 저장 확인 다이얼로그
+      var choice = confirm("저장하시겠습니까?\n\n확인: 저장 후 내 앨범으로 이동\n취소: 저장하지 않고 내 앨범으로 이동");
+      if (choice) {
+        await this.saveCard();
+      }
+      this.closeRecord();
+    },
+    closeRecord() {
+      this.placedItems = [];
+      this.mainImageSrc = "";
+      this.selectedDecorationId = null;
+      this.currentRecordId = null;
+      this.recordTitle = "";
+      this.undoHistory = [];
+      this._dirty = false;
+      this.currentRecord = {
+        title: "새 감상 기록",
+        date: "2026.05.18",
+        rating: 0,
+        memo: "좋아하는 장면과 감정을 자유롭게 남겨보세요.",
+        tags: [],
+      };
+      this.navigatePage("내 앨범");
+    },
     async saveCard() {
       const now = Date.now();
       if (now - this.lastSaveAt < 350 || this.isSaving) return;
@@ -1399,16 +1589,16 @@ export default {
       this.isSaving = true;
 
       try {
-        const recordTitle = (this.currentRecord.title || this.recordForm.title || "").trim() || "제목 없는 기록";
+        const animeTitle = (this.currentRecord.title || this.recordForm.title || "").trim() || "제목 없는 기록";
         const payload = {
-          work_title: recordTitle,
-          anime_title: recordTitle,
-          ...(this.currentRecord.workId || this.recordForm.workId ? { work_id: this.currentRecord.workId || this.recordForm.workId } : {}),
+          ...(this.recordForm.workId ? { work_id: this.recordForm.workId } : {}),
+          title: this.recordTitle.trim() || animeTitle,
+          anime_title: animeTitle,
           rating: this.currentRecord.rating ?? null,
           watched_date: this.formatInputDate(this.currentRecord.date) || null,
           content: this.currentRecord.memo || "",
           canvas_data: {
-            title: recordTitle,
+            title: this.recordTitle,
             placed_items: this.cloneForSave(this.placedItems),
             main_image_src: this.mainImageSrc,
             analysis: this.cloneForSave(this.ai),
@@ -1452,30 +1642,21 @@ export default {
 
     // ── 저장된 카드 열기 ──────────────────────────────────────────────────
     openSavedCard(card) {
-      if (card.id) {
-        const baseUrl = ["5173", "5174"].includes(window.location.port)
-          ? (import.meta.env.BASE_URL || "/").replace(/\/$/, "")
-          : "";
-        window.history.pushState({}, "", `${baseUrl}/diaries/${card.id}/`);
-      }
       this.currentRecord = this.cloneForSave(
         card.snapshot?.record || {
           title: card.title,
           date: card.date,
           rating: card.rating,
-          workId: card.workId || null,
           memo: "",
           tags: [],
         }
       );
-      if (!this.currentRecord.workId) {
-        this.currentRecord.workId = card.workId || null;
-      }
       this.placedItems = this.cloneForSave(card.snapshot?.placedItems || []);
       this.mainImageSrc = card.snapshot?.mainImageSrc || "";
       this.selectedDecorationId = null;
       this.currentRecordId = card.id;  // 수정 모드 — 저장 시 PATCH
       this.recordVisibility = card.visibility || "private";
+      this.recordTitle = card.recordTitle || card.title || "";
       this.activePage = "기록 작성";
       this.toastMessage = "";
       this.undoHistory = [];
@@ -1484,46 +1665,6 @@ export default {
         this.ai = this.cloneForSave(card.snapshot.analysis);
       }
       this.$nextTick(() => { this._dirty = false; });
-    },
-
-    // ── 피드 좋아요 토글 ────────────────────────────────────────────────
-    async toggleFeedLike(record) {
-      if (!this.currentUser) return;
-      try {
-        const data = await this.apiFetch(`/api/records/${record.id}/like/`, { method: "POST" });
-        record.is_liked = data.liked;
-        record.like_count = data.like_count;
-      } catch (error) {
-        console.error("좋아요 실패:", error);
-      }
-    },
-
-    openFeedRecord(record) {
-      const card = this.apiRecordToSavedCard(record);
-      this.openSavedCard(card);
-    },
-
-    feedAuthorName(record) {
-      return (record?.user_nickname || "").trim() || "익명";
-    },
-
-    feedAuthorInitial(record) {
-      return this.feedAuthorName(record).slice(0, 1);
-    },
-
-    formatFeedDate(dateStr) {
-      if (!dateStr) return "";
-      const d = new Date(dateStr);
-      const now = new Date();
-      const diff = now - d;
-      const mins = Math.floor(diff / 60000);
-      if (mins < 1) return "방금 전";
-      if (mins < 60) return `${mins}분 전`;
-      const hours = Math.floor(mins / 60);
-      if (hours < 24) return `${hours}시간 전`;
-      const days = Math.floor(hours / 24);
-      if (days < 7) return `${days}일 전`;
-      return d.toLocaleDateString("ko-KR");
     },
 
     // ── 기록 삭제 (DELETE /api/records/{id}/) ────────────────────────────
@@ -1549,24 +1690,50 @@ export default {
     async loadUserStickers() {
       try {
         const data = await this.apiFetch('/api/records/stickers/');
-        // API 응답을 StickerPanel이 기대하는 형태로 변환
         const categoryMap = {
           sticker: '스티커', frame: '프레임', bubble: '말풍선',
-          icon: '아이콘', background: '배경', tape: '테이프',
         };
-        this.userStickers = data.map((item) => ({
-          id: item.sticker.id,
-          icon: item.sticker.emoji_fallback || '⬡',
-          label: item.sticker.name,
-          tone: item.sticker.tone || '',
-          category: categoryMap[item.sticker.category] || '스티커',
-          imageSrc: item.sticker.image_url || null,
-        }));
+        this.userStickers = data.map((item) => {
+          var tone = item.sticker.tone || '';
+          // 이미지가 있고 tone에 sticker-image가 없으면 추가 (포토카드 프레임 방지)
+          if (item.sticker.image_url && tone.indexOf('sticker-image') === -1) {
+            tone = ('sticker-image ' + tone).trim();
+          }
+          return {
+            id: item.sticker.id,
+            icon: item.sticker.emoji_fallback || '⬡',
+            label: item.sticker.name,
+            tone: tone,
+            category: categoryMap[item.sticker.category] || '스티커',
+            imageSrc: item.sticker.image_url || null,
+          };
+        });
         this.stickersLoaded = true;
       } catch (error) {
         console.error('스티커 로드 실패:', error);
-        // 실패 시 하드코딩 폴백 유지
         this.stickersLoaded = false;
+      }
+    },
+
+    async handleStickerUpload({ file, category }) {
+      var formData = new FormData();
+      formData.append('image', file);
+      formData.append('category', category);
+      formData.append('name', file.name.replace(/\.[^.]+$/, ''));
+      try {
+        var csrfToken = await this.getCsrfToken();
+        var resp = await fetch('/api/records/stickers/upload/', {
+          method: 'POST',
+          headers: { 'X-CSRFToken': csrfToken },
+          credentials: 'include',
+          body: formData,
+        });
+        if (!resp.ok) throw new Error('업로드 실패');
+        await this.loadUserStickers();
+        this.toastMessage = '스티커가 추가되었습니다!';
+      } catch (error) {
+        console.error('스티커 업로드 실패:', error);
+        this.toastMessage = '스티커 업로드에 실패했습니다.';
       }
     },
 

@@ -22,19 +22,29 @@ def build_card_prompt(record, templates, placed_items=None) -> str:
     placed_items = placed_items or []
 
     # 1) 감상 기록 데이터
-    record_data = {
-        'record_id': record.id,
-        'work': {
+    if work:
+        work_info = {
             'title': work.title_ko or work.title,
             'title_en': work.title_en,
             'genre': work.genre,
             'poster_url': work.poster_image,
-        },
+        }
+    else:
+        work_info = {
+            'title': record.title or '제목 없음',
+            'title_en': '',
+            'genre': '',
+            'poster_url': '',
+        }
+    record_data = {
+        'record_id': record.id,
+        'work': work_info,
         'rating': str(record.rating) if record.rating else None,
         'watched_date': str(record.watched_date) if record.watched_date else None,
         'content': record.content[:500] if record.content else '',
         'tags': _extract_tags(record),
-        'sticker_count': len([i for i in placed_items if i.get('type') == 'sticker']),
+        'sticker_count': len([i for i in placed_items if i.get('type', 'sticker') not in ('text',)]),
+        'stickers': _summarize_stickers(placed_items),
     }
 
     # 2) 감상문 처리 안내
@@ -61,6 +71,11 @@ def build_card_prompt(record, templates, placed_items=None) -> str:
     # 4) 프롬프트 조립
     prompt = f"""아래 감상 기록을 분석해서 공유 카드 레이아웃 JSON을 생성해줘.
 
+## 핵심 디자인 철학
+사용자가 업로드한 이미지(is_main_image: true)가 카드의 **주인공**.
+포스터(작품 커버)는 작은 폴라로이드로 곁들이는 보조 요소.
+스티커·말풍선은 이미지를 꾸며주는 역할.
+
 ## 감상 기록
 {json.dumps(record_data, ensure_ascii=False, indent=2)}
 
@@ -71,38 +86,88 @@ def build_card_prompt(record, templates, placed_items=None) -> str:
 {memo_instruction}
 
 ## 배치 규칙
-카드는 1080×1920px이며 4개 존으로 나뉜다. 각 존 범위 안에서 자유롭게 배치해.
+카드는 1080×1920px, 4개 존으로 나뉜다.
 
 ### Zone 1 — 헤더 (y: 0~140)
-- 날짜를 좌측에 배치 (감상일 또는 오늘 날짜)
-- 우측에는 덕꾸 로고가 자동 삽입되므로 x=800 이후 비워둬
+- 날짜를 좌측에 배치. 우측 x=800 이후는 로고 자동 삽입.
 
-### Zone 2 — 콜라주 (y: 140~1100)
-- 포스터 이미지 배치 (x, y, width, height 결정)
-- frame 스타일 선택: "none" | "polaroid" | "rounded" | "shadow"
-- 포스터 아래 캐릭터/작품명 라벨 (선택사항)
-- 사용자 스티커 {record_data['sticker_count']}개가 자동 배치되므로 공간 고려
+### Zone 2 — 메인 이미지 + 포스터 (y: 140~1200)
+이 영역의 **주인공은 사용자 이미지**(is_main_image: true).
 
-### Zone 3 — 메모 (y: 1100~1500)
-- 감상문 텍스트를 메모지 느낌으로 배치
-- 메모 배경색, 테두리색, 텍스트색 결정
-- font_size 범위: 24~34px
+#### ★ 메인 이미지 (is_main_image: true) — 주인공
+- Zone 2 전체를 **최대한 크게** 차지 (최소 width 600, height 500).
+- 여러 장이면 Zone 2를 나눠서 각각 크게. 겹치면 안 됨.
+- 다이어리 상대 위치 반영 (왼쪽→카드 왼쪽, 오른쪽→카드 오른쪽).
 
-### Zone 4 — 정보 (y: 1500~1920)
-- 작품 제목 (굵게, 중앙 정렬)
-- 별점 (강조색으로 크게)
-- 태그 목록 (작게, 해시태그 형식)
+#### 포스터 (collage.poster) — 보조 요소
+- width 160~320px으로 **작게**. 메인 이미지를 가리지 않는 빈 구석에 배치.
+- frame은 "polaroid" 고정.
+
+### 스티커 재배치 (중요!)
+- stickers 배열의 각 스티커를 index(0부터) 기준으로 x, y, width, height, rotation 지정.
+- **y ≥ 140** (헤더 침범 금지).
+- 다이어리 원본 x_pct, y_pct 상대 위치를 카드 크기에 맞게 스케일.
+
+#### 일반 스티커 / 이미지 스티커 — 꾸미기 요소
+- 아이콘: 60~100px, 이미지 스티커: 100~200px.
+- 메인 이미지 중심 70% 보호 영역 배치 금지. 가장자리 30%만 가능.
+- rotation: -15~15도. 메모지 테두리와 10~20% 겹쳐도 됨.
+
+#### 말풍선 (type: "bubble")
+- 텍스트 잘림 방지: 한글 1글자 ≈ 28×34px. 최소 160×80px.
+- font_size 필드 반드시 포함 (16~28).
+
+### Zone 3 — 메모 (y: 1200~1560)
+- 감상문을 메모지 느낌으로. font_size: 24~34px.
+
+### Zone 4 — 정보 (y: 1560~1920)
+- 작품 제목 (굵게, 중앙), 별점, 해시태그.
 
 ## 배경 스타일
-작품의 장르와 태그 분위기에 맞게 배경색을 결정해.
-- 힐링/감성 → 따뜻한 베이지·파스텔 계열
-- 액션/다크 → 어두운 톤
-- 판타지/몽환 → 보라·파랑 그라데이션 느낌
-- 일상/코미디 → 밝은 노란·분홍 계열
+장르·분위기에 맞게 배경색 결정.
+- 힐링/감성 → 베이지·파스텔 | 액션/다크 → 어두운 톤
+- 판타지/몽환 → 보라·파랑 | 일상/코미디 → 노란·분홍
 
 JSON만 응답해. 다른 텍스트 없이.
 """
     return prompt
+
+
+def _summarize_stickers(placed_items: list) -> list[dict]:
+    """placedItems에서 스티커 요약 정보를 추출한다."""
+    stickers = []
+    for item in placed_items:
+        item_type = item.get('type', 'sticker')
+        if item_type == 'text':
+            continue
+        summary = {
+            'type': item_type,
+            'icon': item.get('icon', ''),
+            'x_pct': item.get('x', 0),
+            'y_pct': item.get('y', 0),
+            'scale': item.get('scale', 1.0),
+            'width': item.get('width', 0),
+            'height': item.get('height', 0),
+            'zIndex': item.get('zIndex', 0),
+        }
+        if item_type == 'bubble':
+            summary['text'] = item.get('text', '')
+            summary['bubbleType'] = item.get('bubbleType', 'normal')
+        if item.get('imageSrc'):
+            summary['has_image'] = True
+            summary['is_main_image'] = _is_main_image(item)
+        stickers.append(summary)
+    return stickers
+
+
+def _is_main_image(item: dict) -> bool:
+    """업로드된 사용자 이미지(장면 캡처 등)인지 판단한다.
+
+    /api/records/uploads/ 경로면 사용자가 직접 올린 이미지 → 메인 이미지.
+    기본 스티커(/static/ 등)는 메인이 아님.
+    """
+    src = item.get('imageSrc') or ''
+    return '/api/records/uploads/' in src
 
 
 def _extract_tags(record) -> list[str]:

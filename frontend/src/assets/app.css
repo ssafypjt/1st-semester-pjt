@@ -851,6 +851,29 @@ button {
   font-size: 24px;
 }
 
+.record-title-input {
+  font-size: 22px;
+  font-weight: 900;
+  color: #2d1b4e;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  outline: none;
+  padding: 4px 0;
+  width: 100%;
+  transition: border-color 0.2s;
+}
+.record-title-input:hover {
+  border-bottom-color: #e2d9ea;
+}
+.record-title-input:focus {
+  border-bottom-color: #8d63d0;
+}
+.record-title-input::placeholder {
+  color: #c4b5d8;
+  font-weight: 700;
+}
+
 .tabs {
   display: flex;
   gap: 20px;
@@ -919,6 +942,17 @@ button {
   background: #f7f2fa;
   box-shadow: none;
   opacity: .72;
+}
+
+.tool-action.close-record-action {
+  min-width: auto;
+  padding: 0 10px;
+  color: #8a5570;
+  background: #fff7fb;
+  border-color: #e8d0dc;
+}
+.tool-action.close-record-action:hover {
+  background: #fce8f0;
 }
 
 .tool-action.danger {
@@ -1416,14 +1450,207 @@ button {
   touch-action: none;
 }
 
-.placed-sticker.bubble {
-  min-width: 86px;
-  border: 2px solid currentColor;
+/* ── 말풍선 공통 ── */
+.placed-sticker.bubble-normal,
+.placed-sticker.bubble-thought {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+  background: transparent;
+  border: none;
+}
+
+/* 일반 말풍선 */
+.bubble-editor.normal {
+  --bubble-border: #b49cd8;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 2px solid var(--bubble-border);
   border-radius: 18px 18px 18px 6px;
-  padding: 11px 15px;
-  font-size: 15px;
-  font-weight: 900;
-  box-shadow: 0 8px 14px rgba(74, 52, 98, .1);
+  padding: 10px 14px;
+  box-shadow: 0 4px 12px rgba(74, 52, 98, .12);
+}
+.bubble-editor.normal::after {
+  content: "";
+  position: absolute;
+  bottom: -10px;
+  left: 14px;
+  width: 0;
+  height: 0;
+  border-left: 10px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 10px solid var(--bubble-border);
+}
+
+/* 상상 말풍선 (구름형) */
+.bubble-editor.thought {
+  --bubble-border: #c4aee0;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 2px solid var(--bubble-border);
+  border-radius: 28px;
+  padding: 10px 14px;
+  box-shadow: 0 4px 12px rgba(74, 52, 98, .1);
+}
+.bubble-editor.thought::after {
+  content: "";
+  position: absolute;
+  bottom: -12px;
+  left: 20px;
+  width: 10px;
+  height: 10px;
+  background: inherit;
+  border: 2px solid var(--bubble-border);
+  border-radius: 50%;
+}
+.bubble-editor.thought::before {
+  content: "";
+  position: absolute;
+  bottom: -20px;
+  left: 14px;
+  width: 6px;
+  height: 6px;
+  background: inherit;
+  border: 2px solid var(--bubble-border);
+  border-radius: 50%;
+}
+
+/* 말풍선 textarea */
+.bubble-editor textarea {
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: transparent;
+  color: #342a3f;
+  font-weight: 700;
+  line-height: 1.5;
+  font-family: inherit;
+}
+
+/* 스티커패널 말풍선 미리보기 */
+.bubble-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 18px;
+}
+.bubble-preview small {
+  font-size: 10px;
+  opacity: .7;
+}
+
+/* ── 말풍선 편집 툴바 ── */
+.bubble-toolbar {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  margin-top: 6px;
+  background: #fff;
+  border: 1px solid #e4dce9;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(74, 52, 98, .08);
+}
+.bt-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bt-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #6b5b8a;
+  white-space: nowrap;
+}
+.bt-font-size {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #f7f0fb;
+  border-radius: 6px;
+  padding: 2px 4px;
+}
+.bt-font-size button {
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 4px;
+  background: #ede4f5;
+  color: #6b5b8a;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.bt-font-size button:hover {
+  background: #d9c9f0;
+}
+.bt-font-size span {
+  font-size: 13px;
+  font-weight: 700;
+  color: #342a3f;
+  min-width: 36px;
+  text-align: center;
+}
+.bt-colors {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.bt-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid #e0d6ea;
+  cursor: pointer;
+  padding: 0;
+  transition: transform .12s;
+}
+.bt-swatch:hover {
+  transform: scale(1.15);
+}
+.bt-swatch.active {
+  border-color: #6b5b8a;
+  box-shadow: 0 0 0 2px #b49cd8;
+}
+.bt-custom-color {
+  position: relative;
+  cursor: pointer;
+}
+.bt-custom-color input[type="color"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+}
+.bt-swatch.custom {
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  color: #999;
+  border-style: dashed;
 }
 
 .placed-sticker.frame {
@@ -1754,11 +1981,31 @@ button {
   pointer-events: none;
 }
 
-.sticker-grid button.bubble,
+.sticker-grid button.bubble-normal,
+.sticker-grid button.bubble-thought,
 .sticker-grid button.frame,
 .sticker-grid button.bg {
   font-size: 15px;
   font-weight: 900;
+}
+
+.sticker-add-btn {
+  width: 100%;
+  height: 68px;
+  display: grid;
+  place-items: center;
+  border: 2px dashed #d4c6e8;
+  border-radius: 8px;
+  background: #faf7ff;
+  color: #a88ecc;
+  font-size: 28px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.sticker-add-btn:hover {
+  background: #f0e6ff;
+  border-color: #8d63d0;
+  color: #7b52c4;
 }
 
 .upload-drop {
@@ -2761,25 +3008,6 @@ button {
   transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
 }
 
-.saved-card-poster {
-  width: 100%;
-  aspect-ratio: 16 / 10;
-  object-fit: cover;
-  display: block;
-  margin: 0 0 14px;
-  border-radius: 10px;
-  border: 1px solid rgba(137, 101, 158, .18);
-  background: #f5eef9;
-}
-
-.saved-card-poster-placeholder {
-  display: grid;
-  place-items: center;
-  color: #8b75a8;
-  font-size: 13px;
-  font-weight: 850;
-}
-
 .saved-card-delete {
   position: absolute;
   top: 14px;
@@ -3005,10 +3233,50 @@ button {
   font-size: 13px;
 }
 
-/* ── 자동완성 드롭다운 ──────────────────────────────── */
+/* ── 작품 검색바 ──────────────────────────────── */
 .autocomplete-wrap {
   position: relative;
+  display: grid;
+  gap: 8px;
 }
+.field-label {
+  color: #51465d;
+  font-weight: 850;
+}
+.search-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.search-icon {
+  position: absolute;
+  right: 12px;
+  width: 18px;
+  height: 18px;
+  color: #a090b8;
+  pointer-events: none;
+}
+.search-bar input {
+  width: 100%;
+  height: 48px;
+  padding: 0 40px 0 14px;
+  border: 2px solid #e2d9ea;
+  border-radius: 12px;
+  font-size: 15px;
+  background: #faf7ff;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.search-bar input:focus {
+  border-color: #8d63d0;
+  box-shadow: 0 0 0 3px rgba(141, 99, 208, 0.12);
+  background: #fff;
+}
+.search-bar input::placeholder {
+  color: #b8a8cc;
+}
+
+/* ── 자동완성 드롭다운 ──────────────────────────────── */
 .autocomplete-dropdown {
   position: absolute;
   top: 100%;
@@ -3043,18 +3311,6 @@ button {
   object-fit: cover;
   border-radius: 4px;
   flex-shrink: 0;
-}
-
-.ac-poster-placeholder,
-.badge-poster-placeholder {
-  display: grid;
-  place-items: center;
-  color: #8b75a8;
-  background: #f5eef9;
-  font-size: 10px;
-  font-weight: 850;
-  line-height: 1.2;
-  text-align: center;
 }
 .ac-info {
   display: flex;
@@ -3103,6 +3359,22 @@ button {
   padding: 12px;
   color: #9a8bb0;
   font-size: 13px;
+}
+.ac-empty {
+  text-align: center;
+  padding: 14px 12px;
+  color: #7a6b8a;
+  font-size: 13px;
+  background: #faf7ff;
+  border: 1px solid #e0d6f0;
+  border-radius: 10px;
+  margin-top: 4px;
+}
+.ac-empty-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #a090b8;
 }
 .selected-work-badge {
   display: flex;
@@ -3157,6 +3429,27 @@ button {
   font-size: 11px;
   color: #9a8bb0;
   margin-top: 3px;
+}
+.ko-title-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #7a6b8a;
+  margin-top: 4px;
+}
+.ko-edit-btn {
+  background: none;
+  border: 1px solid #d8cfe6;
+  border-radius: 5px;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: #8b7aaa;
+  cursor: pointer;
+}
+.ko-edit-btn:hover {
+  background: #f3ecff;
+  color: #5b4a8a;
 }
 
 .share-note b {
@@ -3267,45 +3560,6 @@ button {
   border-radius: 8px;
   padding: 14px;
   background: #fff;
-}
-
-.feed-card-header,
-.feed-user {
-  display: flex;
-  align-items: center;
-}
-
-.feed-card-header {
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.feed-user {
-  min-width: 0;
-  gap: 8px;
-}
-
-.feed-avatar {
-  width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: #f1e9fb;
-  color: var(--purple-dark);
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.feed-user b {
-  min-width: 0;
-  color: var(--ink);
-  font-weight: 850;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .feed-card small {

@@ -1,5 +1,7 @@
 """공유 카드 생성 / 조회 / 이미지 서빙 views."""
 import logging
+import os
+import re
 
 from django.core.files.base import ContentFile
 from django.shortcuts import get_object_or_404
@@ -8,7 +10,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 
-from records.models import Record
+from django.conf import settings
+from records.models import Record, RecordImage
 from .models import CardTemplate, ShareCard
 from .prompts import build_card_prompt
 from .renderer import render_card
@@ -17,6 +20,37 @@ from .serializers import (CardTemplateSerializer, ShareCardCreateSerializer,
 from .services import GMSClient, GMSError
 
 logger = logging.getLogger(__name__)
+
+# 프론트엔드 기본 스티커 이미지 경로 매핑
+_FRONTEND_ASSET_DIR = os.path.join(
+    settings.BASE_DIR, '..', 'frontend', 'src', 'assets', 'images'
+)
+
+
+def _resolve_image_path(url: str) -> str | None:
+    """상대 URL을 로컬 파일 경로로 변환한다.
+
+    - /api/records/uploads/<id>/ → RecordImage.file.path
+    - /static/src/assets/images/... → frontend 소스 경로
+    """
+
+    # 1) /api/records/uploads/<id>/
+    m = re.match(r'/api/records/uploads/(\d+)/', url)
+    if m:
+        try:
+            ri = RecordImage.objects.get(pk=int(m.group(1)))
+            return ri.file.path
+        except (RecordImage.DoesNotExist, ValueError):
+            return None
+
+    # 2) /static/src/assets/images/...
+    if '/assets/images/' in url:
+        filename = url.split('/assets/images/')[-1]
+        candidate = os.path.join(_FRONTEND_ASSET_DIR, filename)
+        if os.path.isfile(candidate):
+            return candidate
+
+    return None
 
 
 @api_view(['POST'])
@@ -57,7 +91,11 @@ def generate_share_card(request, record_id):
 
     # 2-b) 사용자 다이어리 스티커 (canvas_data.placedItems)
     canvas_data = record.canvas_data or {}
-    placed_items = canvas_data.get('placedItems', []) if isinstance(canvas_data, dict) else []
+    placed_items = (
+        canvas_data.get('placed_items')
+        or canvas_data.get('placedItems')
+        or []
+    ) if isinstance(canvas_data, dict) else []
 
     # 3) AI 프롬프트 조립 & 호출
     prompt = build_card_prompt(record, templates, placed_items=placed_items)
@@ -86,13 +124,29 @@ def generate_share_card(request, record_id):
     # 4) 이미지 렌더링
     try:
         background_url = template.background_image if template else ''
-        poster_url = record.work.poster_image or ''
+        poster_url = (record.work.poster_image if record.work else '') or ''
 
-        # 스티커 중 이미지 URL이 있는 것만 필터
-        sticker_items = [
-            item for item in placed_items
-            if item.get('type') == 'sticker' and item.get('src')
-        ]
+        # text 메모를 제외한 모든 스티커/말풍선/이미지 아이템
+        # 상대 URL → 로컬 파일 경로로 변환
+        sticker_items = []
+        sticker_idx = 0
+        for item in placed_items:
+            if item.get('type', 'sticker') in ('text',):
+                continue
+            item = dict(item)  # 복사
+            item['_sticker_index'] = sticker_idx
+            img_src = item.get('imageSrc') or ''
+            if img_src:
+                local = _resolve_image_path(img_src)
+                if local:
+                    item['_local_path'] = local
+            sticker_items.append(item)
+            sticker_idx += 1
+
+        if poster_url and poster_url.startswith('/'):
+            local_poster = _resolve_image_path(poster_url)
+            if local_poster:
+                poster_url = local_poster
 
         image_buf = render_card(
             layout_data,

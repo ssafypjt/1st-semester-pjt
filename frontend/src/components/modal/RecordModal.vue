@@ -6,43 +6,42 @@
         <button type="button" @click="$emit('close')">×</button>
       </header>
 
-      <!-- 작품명 자동완성 -->
-      <label class="autocomplete-wrap">
-        <span>작품명</span>
-        <input
-          v-if="!selectedWork"
-          ref="titleInput"
-          :value="recordForm.title"
-          placeholder="애니메이션 제목 검색 (한글/영어)"
-          autocomplete="off"
-          @input="onTitleInput($event.target.value)"
-          @focus="showDropdown = suggestions.length > 0"
-          @keydown.down.prevent="moveHighlight(1)"
-          @keydown.up.prevent="moveHighlight(-1)"
-          @keydown.enter.prevent="selectHighlighted"
-          @keydown.escape="showDropdown = false"
-        />
+      <!-- 작품명 검색 -->
+      <div class="autocomplete-wrap">
+        <span class="field-label">작품명</span>
+        <div v-if="!selectedWork" class="search-bar">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input
+            ref="titleInput"
+            :value="recordForm.title"
+            placeholder="제목을 검색하세요 (한글/영어)"
+            autocomplete="off"
+            @input="onTitleInput($event.target.value)"
+            @focus="showDropdown = suggestions.length > 0"
+            @keydown.down.prevent="moveHighlight(1)"
+            @keydown.up.prevent="moveHighlight(-1)"
+            @keydown.enter.prevent="selectHighlighted"
+            @keydown.escape="showDropdown = false"
+          />
+        </div>
         <!-- 선택된 작품 뱃지 -->
         <div v-if="selectedWork" class="selected-work-badge">
-          <img
-            v-if="workPosterSrc(selectedWork)"
-            :src="workPosterSrc(selectedWork)"
-            class="badge-poster"
-            alt=""
-            @error="handlePosterError(selectedWork)"
-          />
-          <span v-else class="badge-poster badge-poster-placeholder">이미지 없음</span>
+          <img v-if="selectedWork.poster_image" :src="selectedWork.poster_image" class="badge-poster" />
           <span class="badge-title">{{ selectedWork.title_ko || selectedWork.title }}</span>
           <button type="button" class="badge-clear" @click="clearSelection">&times;</button>
         </div>
-        <!-- 한글 제목 입력 (AniList에서 선택 + 한글 제목 없을 때) -->
-        <div v-if="selectedWork && !selectedWork.title_ko && selectedWork.source !== 'local'" class="ko-title-input">
+        <!-- 한글 제목: 없으면 입력, 있으면 수정 버튼 -->
+        <div v-if="selectedWork && (!selectedWork.title_ko || isEditingKo)" class="ko-title-input">
           <input
             v-model="koTitleInput"
-            placeholder="한글 제목 입력 (예: 주술회전)"
+            :placeholder="selectedWork.title_ko ? '한글 제목 수정' : '한글 제목 입력 (예: 주술회전)'"
             class="ko-title-field"
           />
           <span class="ko-hint">다음 검색부터 한글로 찾을 수 있어요</span>
+        </div>
+        <div v-if="selectedWork && selectedWork.title_ko && !isEditingKo" class="ko-title-display">
+          <span>한글: {{ selectedWork.title_ko }}</span>
+          <button type="button" class="ko-edit-btn" @click="startEditKo">수정</button>
         </div>
         <!-- 드롭다운 -->
         <ul v-if="showDropdown && suggestions.length" class="autocomplete-dropdown">
@@ -53,14 +52,7 @@
             @mousedown.prevent="selectSuggestion(item)"
             @mouseenter="highlightIdx = idx"
           >
-            <img
-              v-if="workPosterSrc(item)"
-              :src="workPosterSrc(item)"
-              class="ac-poster"
-              alt=""
-              @error="handlePosterError(item)"
-            />
-            <span v-else class="ac-poster ac-poster-placeholder">이미지 없음</span>
+            <img v-if="item.poster_image" :src="item.poster_image" class="ac-poster" />
             <div class="ac-info">
               <strong>{{ item.title_ko || item.title }}</strong>
               <span v-if="item.title_ko && item.title !== item.title_ko" class="ac-sub">{{ item.title }}</span>
@@ -75,7 +67,11 @@
           </li>
         </ul>
         <div v-if="showDropdown && isSearching" class="ac-loading">검색 중...</div>
-      </label>
+        <div v-if="showDropdown && !isSearching && !suggestions.length && recordForm.title.trim().length >= 2" class="ac-empty">
+          검색 결과가 없습니다.<br/>
+          <span class="ac-empty-hint">영어로 검색해보세요 (ex: naruto)</span>
+        </div>
+      </div>
 
       <label>
         <span>감상 날짜</span>
@@ -129,34 +125,10 @@ export default {
       koTitleInput: "",
       searchTimer: null,
       submitError: "",
-      brokenPosterKeys: {},
+      isEditingKo: false,
     };
   },
   methods: {
-    posterKey(item) {
-      return `${item?.source || "local"}:${item?.external_id || item?.id || item?.title || ""}`;
-    },
-    normalizeImageUrl(value) {
-      const rawValue = String(value || "").trim();
-      if (!rawValue) return "";
-      if (rawValue.startsWith("/") || rawValue.startsWith("data:image/")) return rawValue;
-
-      const markdownMatch = rawValue.match(/\[[^\]]*\]\((https?:\/\/[^)]+)\)/);
-      if (markdownMatch) return markdownMatch[1];
-
-      const urlMatch = rawValue.match(/https?:\/\/[^\s)]+/);
-      return urlMatch ? urlMatch[0] : "";
-    },
-    workPosterSrc(item) {
-      if (!item || this.brokenPosterKeys[this.posterKey(item)]) return "";
-      return this.normalizeImageUrl(item.poster_image || item.work_poster || item.image || item.poster);
-    },
-    handlePosterError(item) {
-      this.brokenPosterKeys = {
-        ...this.brokenPosterKeys,
-        [this.posterKey(item)]: true,
-      };
-    },
     updateField(field, value) {
       this.$emit("update:recordForm", {
         ...this.recordForm,
@@ -199,25 +171,24 @@ export default {
         });
         this.selectedWork = Object.assign({}, item, work, { source: item.source });
         var displayTitle = work.title_ko || work.title || item.title;
-        this.$emit("update:recordForm", {
-          ...this.recordForm,
-          title: displayTitle,
-          workId: work.id,
-        });
+        this.updateField("title", displayTitle);
+        this.updateField("workId", work.id);
         this.koTitleInput = "";
       } catch (e) {
         console.error("작품 선택 실패:", e);
         this.updateField("title", item.title_ko || item.title);
       }
     },
+    startEditKo() {
+      this.koTitleInput = this.selectedWork.title_ko;
+      this.isEditingKo = true;
+    },
     clearSelection() {
       this.selectedWork = null;
       this.koTitleInput = "";
-      this.$emit("update:recordForm", {
-        ...this.recordForm,
-        title: "",
-        workId: null,
-      });
+      this.isEditingKo = false;
+      this.updateField("title", "");
+      this.updateField("workId", null);
       var self = this;
       this.$nextTick(function() {
         if (self.$refs.titleInput) self.$refs.titleInput.focus();
@@ -233,12 +204,12 @@ export default {
       }
     },
     handleSubmit() {
-      if (!this.selectedWork && !this.recordForm.workId) {
+      if (!this.selectedWork) {
         this.submitError = '작품을 검색해서 선택해주세요.';
         return;
       }
       this.submitError = '';
-      if (this.selectedWork && this.koTitleInput && !this.selectedWork.title_ko) {
+      if (this.koTitleInput && this.koTitleInput !== this.selectedWork.title_ko) {
         this.apiFetch("/api/works/select/", {
           method: "POST",
           body: JSON.stringify({
@@ -247,19 +218,15 @@ export default {
           }),
         }).catch(function() {});
         this.updateField("title", this.koTitleInput);
+      } else {
+        // 선택된 작품의 제목으로 확정 (검색어가 아닌 실제 작품명)
+        var correctTitle = this.selectedWork.title_ko || this.selectedWork.title;
+        if (correctTitle && this.recordForm.title !== correctTitle) {
+          this.updateField("title", correctTitle);
+        }
       }
       this.$emit("submit");
     },
-  },
-  mounted() {
-    if (this.recordForm.workId && this.recordForm.title) {
-      this.selectedWork = {
-        id: this.recordForm.workId,
-        title: this.recordForm.title,
-        title_ko: this.recordForm.title,
-        source: "local",
-      };
-    }
   },
   beforeUnmount() {
     clearTimeout(this.searchTimer);

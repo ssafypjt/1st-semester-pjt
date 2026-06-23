@@ -262,3 +262,40 @@ def grant_default_stickers(request):
         if was_created:
             created += 1
     return Response({'granted': created})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def upload_sticker(request):
+    """유저가 커스텀 스티커를 업로드.
+
+    POST /api/records/stickers/upload/
+    - image: 이미지 파일 (필수)
+    - category: sticker/frame/bubble (기본 sticker)
+    - name: 스티커명 (선택, 기본 파일명)
+    """
+    image = request.FILES.get('image')
+    if not image:
+        return Response({'detail': '이미지를 첨부해주세요.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    category = request.data.get('category', 'sticker')
+    if category not in ('sticker', 'frame', 'bubble'):
+        category = 'sticker'
+
+    name = request.data.get('name', '') or image.name
+    name = name[:100]
+
+    asset = StickerAsset.objects.create(
+        name=name,
+        category=category,
+        image=image,
+        is_default=False,
+        is_active=True,
+    )
+    UserSticker.objects.create(
+        user=request.user,
+        sticker=asset,
+        acquired_type='purchase',
+    )
+    serializer = StickerAssetSerializer(asset, context={'request': request})
+    return Response(serializer.data, status=status.HTTP_201_CREATED)

@@ -2,7 +2,8 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from .views import (RecordViewSet, protected_media, upload_image,
-                    my_stickers, all_stickers, grant_default_stickers)
+                    my_stickers, all_stickers, grant_default_stickers,
+                    upload_sticker)
 
 router = DefaultRouter()
 router.register('', RecordViewSet, basename='record')
@@ -16,4 +17,5 @@ urlpatterns = [
     path('stickers/', my_stickers, name='my-stickers'),
     path('stickers/all/', all_stickers, name='all-stickers'),
     path('stickers/init/', grant_default_stickers, name='grant-default-stickers'),
+    path('stickers/upload/', upload_sticker, name='upload-sticker'),
 ] + router.urls
