@@ -6,36 +6,42 @@
         <button type="button" @click="$emit('close')">×</button>
       </header>
 
-      <!-- 작품명 자동완성 -->
-      <label class="autocomplete-wrap">
-        <span>작품명</span>
-        <input
-          v-if="!selectedWork"
-          ref="titleInput"
-          :value="recordForm.title"
-          placeholder="애니메이션 제목 검색 (한글/영어)"
-          autocomplete="off"
-          @input="onTitleInput($event.target.value)"
-          @focus="showDropdown = suggestions.length > 0"
-          @keydown.down.prevent="moveHighlight(1)"
-          @keydown.up.prevent="moveHighlight(-1)"
-          @keydown.enter.prevent="selectHighlighted"
-          @keydown.escape="showDropdown = false"
-        />
+      <!-- 작품명 검색 -->
+      <div class="autocomplete-wrap">
+        <span class="field-label">작품명</span>
+        <div v-if="!selectedWork" class="search-bar">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input
+            ref="titleInput"
+            :value="recordForm.title"
+            placeholder="제목을 검색하세요 (한글/영어)"
+            autocomplete="off"
+            @input="onTitleInput($event.target.value)"
+            @focus="showDropdown = suggestions.length > 0"
+            @keydown.down.prevent="moveHighlight(1)"
+            @keydown.up.prevent="moveHighlight(-1)"
+            @keydown.enter.prevent="selectHighlighted"
+            @keydown.escape="showDropdown = false"
+          />
+        </div>
         <!-- 선택된 작품 뱃지 -->
         <div v-if="selectedWork" class="selected-work-badge">
           <img v-if="selectedWork.poster_image" :src="selectedWork.poster_image" class="badge-poster" />
           <span class="badge-title">{{ selectedWork.title_ko || selectedWork.title }}</span>
           <button type="button" class="badge-clear" @click="clearSelection">&times;</button>
         </div>
-        <!-- 한글 제목 입력 (AniList에서 선택 + 한글 제목 없을 때) -->
-        <div v-if="selectedWork && !selectedWork.title_ko && selectedWork.source !== 'local'" class="ko-title-input">
+        <!-- 한글 제목: 없으면 입력, 있으면 수정 버튼 -->
+        <div v-if="selectedWork && (!selectedWork.title_ko || isEditingKo)" class="ko-title-input">
           <input
             v-model="koTitleInput"
-            placeholder="한글 제목 입력 (예: 주술회전)"
+            :placeholder="selectedWork.title_ko ? '한글 제목 수정' : '한글 제목 입력 (예: 주술회전)'"
             class="ko-title-field"
           />
           <span class="ko-hint">다음 검색부터 한글로 찾을 수 있어요</span>
+        </div>
+        <div v-if="selectedWork && selectedWork.title_ko && !isEditingKo" class="ko-title-display">
+          <span>한글: {{ selectedWork.title_ko }}</span>
+          <button type="button" class="ko-edit-btn" @click="startEditKo">수정</button>
         </div>
         <!-- 드롭다운 -->
         <ul v-if="showDropdown && suggestions.length" class="autocomplete-dropdown">
@@ -61,7 +67,11 @@
           </li>
         </ul>
         <div v-if="showDropdown && isSearching" class="ac-loading">검색 중...</div>
-      </label>
+        <div v-if="showDropdown && !isSearching && !suggestions.length && recordForm.title.trim().length >= 2" class="ac-empty">
+          검색 결과가 없습니다.<br/>
+          <span class="ac-empty-hint">영어로 검색해보세요 (ex: naruto)</span>
+        </div>
+      </div>
 
       <label>
         <span>감상 날짜</span>
@@ -115,6 +125,7 @@ export default {
       koTitleInput: "",
       searchTimer: null,
       submitError: "",
+      isEditingKo: false,
     };
   },
   methods: {
@@ -168,9 +179,14 @@ export default {
         this.updateField("title", item.title_ko || item.title);
       }
     },
+    startEditKo() {
+      this.koTitleInput = this.selectedWork.title_ko;
+      this.isEditingKo = true;
+    },
     clearSelection() {
       this.selectedWork = null;
       this.koTitleInput = "";
+      this.isEditingKo = false;
       this.updateField("title", "");
       this.updateField("workId", null);
       var self = this;
@@ -193,7 +209,7 @@ export default {
         return;
       }
       this.submitError = '';
-      if (this.selectedWork && this.koTitleInput && !this.selectedWork.title_ko) {
+      if (this.koTitleInput && this.koTitleInput !== this.selectedWork.title_ko) {
         this.apiFetch("/api/works/select/", {
           method: "POST",
           body: JSON.stringify({
@@ -202,6 +218,12 @@ export default {
           }),
         }).catch(function() {});
         this.updateField("title", this.koTitleInput);
+      } else {
+        // 선택된 작품의 제목으로 확정 (검색어가 아닌 실제 작품명)
+        var correctTitle = this.selectedWork.title_ko || this.selectedWork.title;
+        if (correctTitle && this.recordForm.title !== correctTitle) {
+          this.updateField("title", correctTitle);
+        }
       }
       this.$emit("submit");
     },

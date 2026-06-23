@@ -1679,4 +1679,239 @@ export default {
           return;
         }
       }
-      this.savedCards 
+      this.savedCards = this.savedCards.filter((card) => card.id !== cardId);
+      if (this.currentRecordId === cardId) {
+        this.currentRecordId = null;
+      }
+    },
+
+    // ── 스티커 API ────────────────────────────────────────────────────────
+
+    async loadUserStickers() {
+      try {
+        const data = await this.apiFetch('/api/records/stickers/');
+        const categoryMap = {
+          sticker: '스티커', frame: '프레임', bubble: '말풍선',
+        };
+        this.userStickers = data.map((item) => {
+          var tone = item.sticker.tone || '';
+          // 이미지가 있고 tone에 sticker-image가 없으면 추가 (포토카드 프레임 방지)
+          if (item.sticker.image_url && tone.indexOf('sticker-image') === -1) {
+            tone = ('sticker-image ' + tone).trim();
+          }
+          return {
+            id: item.sticker.id,
+            icon: item.sticker.emoji_fallback || '⬡',
+            label: item.sticker.name,
+            tone: tone,
+            category: categoryMap[item.sticker.category] || '스티커',
+            imageSrc: item.sticker.image_url || null,
+          };
+        });
+        this.stickersLoaded = true;
+      } catch (error) {
+        console.error('스티커 로드 실패:', error);
+        this.stickersLoaded = false;
+      }
+    },
+
+    async handleStickerUpload({ file, category }) {
+      var formData = new FormData();
+      formData.append('image', file);
+      formData.append('category', category);
+      formData.append('name', file.name.replace(/\.[^.]+$/, ''));
+      try {
+        var csrfToken = await this.getCsrfToken();
+        var resp = await fetch('/api/records/stickers/upload/', {
+          method: 'POST',
+          headers: { 'X-CSRFToken': csrfToken },
+          credentials: 'include',
+          body: formData,
+        });
+        if (!resp.ok) throw new Error('업로드 실패');
+        await this.loadUserStickers();
+        this.toastMessage = '스티커가 추가되었습니다!';
+      } catch (error) {
+        console.error('스티커 업로드 실패:', error);
+        this.toastMessage = '스티커 업로드에 실패했습니다.';
+      }
+    },
+
+    // ── 공유 카드 ─────────────────────────────────────────────────────────
+
+    // 공유 모달 열기
+    openShareModal() {
+      if (!this.currentRecordId) {
+        this.toastMessage = '먼저 기록을 저장한 뒤 공유할 수 있습니다.';
+        return;
+      }
+      this.shareCardError = '';
+      this.isShareModalOpen = true;
+      this.loadShareCards(this.currentRecordId);
+    },
+
+    // 공유 모달 닫기
+    closeShareModal() {
+      this.isShareModalOpen = false;
+    },
+
+    // AI 공유 카드 생성
+    async generateShareCard() {
+      if (!this.currentRecordId) {
+        this.shareCardError = '기록을 먼저 저장해주세요.';
+        return;
+      }
+      this.isGeneratingCard = true;
+      this.shareCardError = '';
+      try {
+        const data = await this.apiFetch(
+          `/api/shares/${this.currentRecordId}/generate/`,
+          { method: 'POST', body: JSON.stringify({}) }
+        );
+        this.shareCards.unshift(data);
+      } catch (error) {
+        console.error('공유 카드 생성 실패:', error);
+        this.shareCardError = '카드 생성에 실패했습니다. 다시 시도해주세요.';
+      } finally {
+        this.isGeneratingCard = false;
+      }
+    },
+
+    // 기존 공유 카드 목록 조회
+    async loadShareCards(recordId) {
+      try {
+        const data = await this.apiFetch(`/api/shares/${recordId}/`);
+        this.shareCards = Array.isArray(data) ? data : (data.results || []);
+      } catch (error) {
+        console.error('공유 카드 목록 조회 실패:', error);
+        this.shareCards = [];
+      }
+    },
+    // 공유 카드 이미지를 파일로 다운로드
+    async downloadShareImage() {
+      if (!this.latestShareCard?.image_url) return;
+      try {
+        const resp = await fetch(this.latestShareCard.image_url);
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        const title = (this.currentRecord.title || 'deokkku').replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '_');
+        link.href = url;
+        link.download = `${title}_sharecard.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error('이미지 다운로드 실패:', err);
+        alert('이미지 다운로드에 실패했습니다.');
+      }
+    },
+
+    // ── SPA 로그인 / 회원가입 ──
+    async handleSignup() {
+      this.loginForm.error = '';
+      this.loginForm.loading = true;
+      try {
+        const user = await this.apiFetch('/api/auth/signup/', {
+          method: 'POST',
+          body: JSON.stringify({
+            email: this.loginForm.email,
+            password: this.loginForm.password,
+            nickname: this.loginForm.nickname || this.loginForm.email.split('@')[0],
+          }),
+        });
+        this.currentUser = user;
+        this.resetProfileForm();
+        this.loadRepresentativeBadges();
+        this.loadUserStickers();
+        this.loadSavedCards();
+        this.loadFeedRecords();
+        this.loginForm = { email: '', password: '', nickname: '', error: '', loading: false, mode: 'login' };
+      } catch (error) {
+        this.loginForm.error = error.message || '회원가입에 실패했습니다.';
+      } finally {
+        this.loginForm.loading = false;
+      }
+    },
+    async handleLogin() {
+      this.loginForm.error = '';
+      this.loginForm.loading = true;
+      try {
+        const user = await this.apiFetch('/api/auth/login/', {
+          method: 'POST',
+          body: JSON.stringify({
+            email: this.loginForm.email,
+            password: this.loginForm.password,
+          }),
+        });
+        this.currentUser = user;
+        this.resetProfileForm();
+        this.loadRepresentativeBadges();
+        this.loadUserStickers();
+        this.loadSavedCards();
+        this.loadFeedRecords();
+        this.loginForm = { email: '', password: '', error: '', loading: false, mode: 'login' };
+      } catch (error) {
+        this.loginForm.error = '이메일 또는 비밀번호가 올바르지 않습니다.';
+      } finally {
+        this.loginForm.loading = false;
+      }
+    },
+
+    // ── 임시저장 (새로고침/브라우저 종료 대비) ──
+    _autosaveKey() {
+      return `deokkkuAutosave:${this.currentUser?.email || "guest"}`;
+    },
+    _autosaveDraft() {
+      try {
+        const data = {
+          currentRecord: JSON.parse(JSON.stringify(this.currentRecord)),
+          placedItems: JSON.parse(JSON.stringify(this.placedItems)),
+          mainImageSrc: this.mainImageSrc,
+          currentRecordId: this.currentRecordId,
+          activePage: this.activePage,
+          savedAt: new Date().toISOString(),
+        };
+        localStorage.setItem(this._autosaveKey(), JSON.stringify(data));
+      } catch (e) {
+        console.warn("임시저장 실패:", e);
+      }
+    },
+    _clearAutosave() {
+      try { localStorage.removeItem(this._autosaveKey()); } catch (e) { /* ignore */ }
+    },
+    _checkAutosaveRestore() {
+      try {
+        const raw = localStorage.getItem(this._autosaveKey());
+        if (!raw) return;
+        const saved = JSON.parse(raw);
+        if (!saved?.currentRecord) { this._clearAutosave(); return; }
+
+        // 기록 작성 중이 아니었으면 복원 불필요
+        if (saved.activePage !== "기록 작성") { this._clearAutosave(); return; }
+
+        // placedItems가 비어있으면 복원할 의미 없음
+        const hasWork = (saved.placedItems?.length > 0) || saved.mainImageSrc;
+        if (!hasWork) { this._clearAutosave(); return; }
+
+        const title = saved.currentRecord.title || "제목 없음";
+        const when = saved.savedAt ? new Date(saved.savedAt).toLocaleString("ko-KR") : "";
+
+        if (confirm(`작성 중이던 기록이 있습니다.\n\n"${title}" (${when})\n\n복원하시겠습니까?\n[확인] 복원  /  [취소] 삭제`)) {
+          this.currentRecord = saved.currentRecord;
+          this.placedItems = Array.isArray(saved.placedItems) ? saved.placedItems : [];
+          this.mainImageSrc = saved.mainImageSrc || "";
+          this.currentRecordId = saved.currentRecordId || null;
+          this.activePage = "기록 작성";
+          this.$nextTick(() => { this._dirty = true; });
+        }
+        this._clearAutosave();
+      } catch (e) {
+        console.warn("임시저장 복원 실패:", e);
+        this._clearAutosave();
+      }
+    },
+  },
+};
+</script>
