@@ -74,28 +74,29 @@ class WorkViewSet(viewsets.ModelViewSet):
                 "description": w.description,
             })
 
-        # 2) AniList 검색
-        try:
-            anilist_results = anilist_search(q)
-            for item in anilist_results:
-                key = f"anilist:{item['external_id']}"
-                if key in local_ext_ids:
-                    continue  # 로컬에 이미 있으면 중복 제거
-                results.append({
-                    "id": None,
-                    "source": "anilist",
-                    "external_id": item["external_id"],
-                    "title": item["title"],
-                    "title_ko": item["title_ko"],
-                    "title_en": item["title_en"],
-                    "poster_image": item["poster_image"],
-                    "genre": item["genre"],
-                    "work_type": item["work_type"],
-                    "release_date": item["release_date"],
-                    "description": item["description"],
-                })
-        except ExternalAPIError as e:
-            logger.warning("AniList 검색 실패: %s", e)
+        # 2) AniList 검색 (로컬에 결과가 없을 때만)
+        if not results:
+            try:
+                anilist_results = anilist_search(q)
+                for item in anilist_results:
+                    key = f"anilist:{item['external_id']}"
+                    if key in local_ext_ids:
+                        continue
+                    results.append({
+                        "id": None,
+                        "source": "anilist",
+                        "external_id": item["external_id"],
+                        "title": item["title"],
+                        "title_ko": item["title_ko"],
+                        "title_en": item["title_en"],
+                        "poster_image": item["poster_image"],
+                        "genre": item["genre"],
+                        "work_type": item["work_type"],
+                        "release_date": item["release_date"],
+                        "description": item["description"],
+                    })
+            except ExternalAPIError as e:
+                logger.warning("AniList 검색 실패: %s", e)
 
         return Response(results[:15])
 
@@ -115,7 +116,7 @@ class WorkViewSet(viewsets.ModelViewSet):
         if data.get("id"):
             try:
                 work = Work.objects.get(id=data["id"])
-                if title_ko and not work.title_ko:
+                if title_ko and title_ko != work.title_ko:
                     work.title_ko = title_ko
                     work.save(update_fields=["title_ko"])
                 return Response(WorkSerializer(work).data)
@@ -126,7 +127,7 @@ class WorkViewSet(viewsets.ModelViewSet):
         if external_id and source:
             work = Work.objects.filter(source=source, external_id=external_id).first()
             if work:
-                if title_ko and not work.title_ko:
+                if title_ko and title_ko != work.title_ko:
                     work.title_ko = title_ko
                     work.save(update_fields=["title_ko"])
                 return Response(WorkSerializer(work).data)

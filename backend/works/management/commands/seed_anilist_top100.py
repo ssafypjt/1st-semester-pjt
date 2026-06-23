@@ -22,6 +22,7 @@ query ($page: Int, $perPage: Int) {
     media(type: ANIME, sort: POPULARITY_DESC) {
       id
       title { romaji english native }
+      synonyms
       startDate { year month day }
       genres
       description(asHtml: false)
@@ -30,6 +31,21 @@ query ($page: Int, $perPage: Int) {
   }
 }
 """
+
+
+import re
+
+_KO_RE = re.compile(r'[가-힣]')  # 한글 감지
+
+
+def _pick_korean_title(synonyms):
+    """synonyms 목록에서 한글이 포함된 첫 번째 항목을 반환."""
+    if not synonyms:
+        return ''
+    for s in synonyms:
+        if _KO_RE.search(s):
+            return s
+    return ''
 
 
 class Command(BaseCommand):
@@ -107,9 +123,15 @@ class Command(BaseCommand):
                 or title_data.get('native')
                 or ''
             )
+            ko_title = _pick_korean_title(media.get('synonyms'))
 
-            # 이미 존재하면 스킵
-            if Work.objects.filter(source='anilist', external_id=anilist_id).exists():
+            # 이미 존재하면 한글 제목만 업데이트
+            existing = Work.objects.filter(source='anilist', external_id=anilist_id).first()
+            if existing:
+                if ko_title and not existing.title_ko:
+                    existing.title_ko = ko_title
+                    existing.save(update_fields=['title_ko'])
+                    self.stdout.write(f'  한글 제목 업데이트: {title} → {ko_title}')
                 skipped_count += 1
                 continue
 
@@ -118,7 +140,7 @@ class Command(BaseCommand):
                 external_id=anilist_id,
                 work_type='anime',
                 title=title,
-                title_ko='',  # AniList는 한글 제목 미제공
+                title_ko=ko_title,
                 title_en=title_data.get('english') or '',
                 release_date=release_date,
                 genre=', '.join(media.get('genres') or []),

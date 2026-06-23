@@ -4,6 +4,7 @@
 설정: settings.ANILIST_API_URL (기본 https://graphql.anilist.co)
 """
 import logging
+import re
 
 import requests
 from django.conf import settings
@@ -27,6 +28,16 @@ query ($search: String) {
   }
 }
 """
+
+_KO_RE = re.compile(r'[가-힣]')
+
+
+def _pick_korean_title(synonyms):
+    """synonyms에서 한글 포함 항목 반환."""
+    for s in (synonyms or []):
+        if _KO_RE.search(s):
+            return s
+    return ''
 
 _TAGS_QUERY = """
 query ($id: Int) {
@@ -83,7 +94,7 @@ def search(query):
             source='anilist',
             external_id=media['id'],
             title=title.get('romaji') or title.get('english') or title.get('native') or '',
-            title_ko='',  # AniList는 한국어 제목 미제공 — 후속에서 별도 매핑 고려
+            title_ko=_pick_korean_title(media.get('synonyms')),
             title_en=title.get('english') or '',
             work_type='anime',
             release_date=release_date,
