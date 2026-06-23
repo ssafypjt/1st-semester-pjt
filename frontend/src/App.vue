@@ -287,13 +287,13 @@
             <article v-for="rec in feedRecords" :key="rec.id" class="feed-card">
               <header class="feed-card-header">
                 <div class="feed-user">
-                  <span class="feed-avatar">{{ (rec.user_nickname || '?')[0] }}</span>
-                  <b>{{ rec.user_nickname }}</b>
+                  <span class="feed-avatar" aria-hidden="true">{{ feedAuthorInitial(rec) }}</span>
+                  <b>{{ feedAuthorName(rec) }}</b>
                 </div>
                 <time>{{ formatFeedDate(rec.created_at) }}</time>
               </header>
               <div class="feed-card-body">
-                <img v-if="rec.work_poster" class="feed-poster" :src="rec.work_poster" :alt="rec.work_title" />
+                <img v-if="normalizeImageUrl(rec.work_poster)" class="feed-poster" :src="normalizeImageUrl(rec.work_poster)" :alt="rec.work_title" />
                 <div class="feed-info">
                   <h3>{{ rec.title || rec.work_title || '제목 없음' }}</h3>
                   <p v-if="rec.work_title" class="feed-work">{{ rec.work_title }}</p>
@@ -479,7 +479,6 @@ export default {
       mainLogoUrl,
       query: "",
       activePage: initialPageFromPath(),
-      activePage: localStorage.getItem("deokkku:activePage") || "내 앨범",
       _dirty: false,
       activeStickerCategory: "전체",
       isRecordModalOpen: false,
@@ -551,39 +550,7 @@ export default {
         mode: 'login',  // 'login' | 'signup'
       },
 
-      // ── 피드 좋아요 토글 ──
-    async toggleFeedLike(record) {
-      if (!this.currentUser) return;
-      try {
-        const data = await this.apiFetch(`/api/records/${record.id}/like/`, { method: "POST" });
-        record.is_liked = data.liked;
-        record.like_count = data.like_count;
-      } catch (error) {
-        console.error("좋아요 실패:", error);
-      }
-    },
-
-    openFeedRecord(record) {
-      const card = this.apiRecordToSavedCard(record);
-      this.openSavedCard(card);
-    },
-
-    formatFeedDate(dateStr) {
-      if (!dateStr) return "";
-      const d = new Date(dateStr);
-      const now = new Date();
-      const diff = now - d;
-      const mins = Math.floor(diff / 60000);
-      if (mins < 1) return "방금 전";
-      if (mins < 60) return `${mins}분 전`;
-      const hours = Math.floor(mins / 60);
-      if (hours < 24) return `${hours}시간 전`;
-      const days = Math.floor(hours / 24);
-      if (days < 7) return `${days}일 전`;
-      return d.toLocaleDateString("ko-KR");
-    },
-
-    // ── 공유 카드 ──
+      // ── 공유 카드 ──
       isShareModalOpen: false,   // 공유 모달 열림
       shareCards: [],            // 생성된 공유 카드 목록
       isGeneratingCard: false,   // AI 카드 생성 중
@@ -709,9 +676,7 @@ export default {
     });
 
     this.loadRepresentativeBadges();
-    this.checkAuth();
-    this.loadFeedRecords();
-    this.loadSavedCards().then(() => {
+    this.checkAuth().then(() => {
       this._checkAutosaveRestore();
       this.$nextTick(() => { this._dirty = false; });
     });
@@ -730,9 +695,15 @@ export default {
         this.resetProfileForm();
         this.loadRepresentativeBadges();
         this.loadUserStickers();
+        await Promise.all([
+          this.loadSavedCards(),
+          this.loadFeedRecords(),
+        ]);
       } catch (error) {
         console.error("인증 확인 실패 — 로그인 필요:", error);
         this.currentUser = null;
+        this.savedCards = [];
+        this.feedRecords = [];
       } finally {
         this.isCheckingAuth = false;
       }
@@ -1069,6 +1040,17 @@ export default {
     cloneForSave(value) {
       return JSON.parse(JSON.stringify(value));
     },
+    normalizeImageUrl(value) {
+      const rawValue = String(value || "").trim();
+      if (!rawValue) return "";
+      if (rawValue.startsWith("/") || rawValue.startsWith("data:image/")) return rawValue;
+
+      const markdownMatch = rawValue.match(/\[[^\]]*\]\((https?:\/\/[^)]+)\)/);
+      if (markdownMatch) return markdownMatch[1];
+
+      const urlMatch = rawValue.match(/https?:\/\/[^\s)]+/);
+      return urlMatch ? urlMatch[0] : "";
+    },
     canvasSnapshot() {
       return {
         placedItems: this.cloneForSave(this.placedItems),
@@ -1317,6 +1299,7 @@ export default {
         title: this.recordForm.title || "제목 없는 기록",
         date: this.formatDisplayDate(this.recordForm.date),
         rating: this.recordForm.rating,
+        workId: this.recordForm.workId || null,
         memo: "새롭게 작성한 감상 기록입니다.",
         tags: [],
       };
@@ -1341,7 +1324,17 @@ export default {
       const title = (cd.title || "").trim() || record.work_title || record.title || record.anime_title || "제목 없는 기록";
       const rawDate = record.watched_date || record.created_at || "";
       const watchedDate = rawDate ? rawDate.slice(0, 10).replaceAll("-", ".") : "";
-      const imageSrc = cd.main_image_src || record.work_poster || "";
+      const imageCandidates = [
+        cd.main_image_src,
+        record.work_poster,
+        record.work?.poster_image,
+        record.poster,
+        record.image,
+      ]
+        .map((value) => this.normalizeImageUrl(value))
+        .filter(Boolean)
+        .filter((value, index, list) => list.indexOf(value) === index);
+      const imageSrc = imageCandidates[0] || "";
 
       return {
         id: record.id,
@@ -1349,6 +1342,7 @@ export default {
         date: watchedDate,
         rating: record.rating ?? 0,
         imageSrc,
+        imageCandidates,
         workId: record.work?.id || record.work || null,
         visibility: record.visibility || "private",
         memoCount: placedItems.filter((i) => i.type === "text").length,
@@ -1372,10 +1366,8 @@ export default {
     // ── 기록 목록 불러오기 (GET /api/records/) ────────────────────────────
     async loadSavedCards() {
       try {
-        const data = await this.apiFetch("/api/records/");
-        const results = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : []);
         const data = await this.apiFetch("/api/records/?mine=1");
-        const results = Array.isArray(data) ? data : (data.results || []);
+        const results = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : []);
 
         this.savedCards = results.map((r) => this.apiRecordToSavedCard(r));
       } catch (error) {
@@ -1411,8 +1403,7 @@ export default {
         const payload = {
           work_title: recordTitle,
           anime_title: recordTitle,
-          ...(this.recordForm.workId ? { work_id: this.recordForm.workId } : { work_title: recordTitle }),
-          anime_title: recordTitle,
+          ...(this.currentRecord.workId || this.recordForm.workId ? { work_id: this.currentRecord.workId || this.recordForm.workId } : {}),
           rating: this.currentRecord.rating ?? null,
           watched_date: this.formatInputDate(this.currentRecord.date) || null,
           content: this.currentRecord.memo || "",
@@ -1472,10 +1463,14 @@ export default {
           title: card.title,
           date: card.date,
           rating: card.rating,
+          workId: card.workId || null,
           memo: "",
           tags: [],
         }
       );
+      if (!this.currentRecord.workId) {
+        this.currentRecord.workId = card.workId || null;
+      }
       this.placedItems = this.cloneForSave(card.snapshot?.placedItems || []);
       this.mainImageSrc = card.snapshot?.mainImageSrc || "";
       this.selectedDecorationId = null;
@@ -1489,6 +1484,46 @@ export default {
         this.ai = this.cloneForSave(card.snapshot.analysis);
       }
       this.$nextTick(() => { this._dirty = false; });
+    },
+
+    // ── 피드 좋아요 토글 ────────────────────────────────────────────────
+    async toggleFeedLike(record) {
+      if (!this.currentUser) return;
+      try {
+        const data = await this.apiFetch(`/api/records/${record.id}/like/`, { method: "POST" });
+        record.is_liked = data.liked;
+        record.like_count = data.like_count;
+      } catch (error) {
+        console.error("좋아요 실패:", error);
+      }
+    },
+
+    openFeedRecord(record) {
+      const card = this.apiRecordToSavedCard(record);
+      this.openSavedCard(card);
+    },
+
+    feedAuthorName(record) {
+      return (record?.user_nickname || "").trim() || "익명";
+    },
+
+    feedAuthorInitial(record) {
+      return this.feedAuthorName(record).slice(0, 1);
+    },
+
+    formatFeedDate(dateStr) {
+      if (!dateStr) return "";
+      const d = new Date(dateStr);
+      const now = new Date();
+      const diff = now - d;
+      const mins = Math.floor(diff / 60000);
+      if (mins < 1) return "방금 전";
+      if (mins < 60) return `${mins}분 전`;
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) return `${hours}시간 전`;
+      const days = Math.floor(hours / 24);
+      if (days < 7) return `${days}일 전`;
+      return d.toLocaleDateString("ko-KR");
     },
 
     // ── 기록 삭제 (DELETE /api/records/{id}/) ────────────────────────────

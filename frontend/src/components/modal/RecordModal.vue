@@ -24,7 +24,14 @@
         />
         <!-- 선택된 작품 뱃지 -->
         <div v-if="selectedWork" class="selected-work-badge">
-          <img v-if="selectedWork.poster_image" :src="selectedWork.poster_image" class="badge-poster" />
+          <img
+            v-if="workPosterSrc(selectedWork)"
+            :src="workPosterSrc(selectedWork)"
+            class="badge-poster"
+            alt=""
+            @error="handlePosterError(selectedWork)"
+          />
+          <span v-else class="badge-poster badge-poster-placeholder">이미지 없음</span>
           <span class="badge-title">{{ selectedWork.title_ko || selectedWork.title }}</span>
           <button type="button" class="badge-clear" @click="clearSelection">&times;</button>
         </div>
@@ -46,7 +53,14 @@
             @mousedown.prevent="selectSuggestion(item)"
             @mouseenter="highlightIdx = idx"
           >
-            <img v-if="item.poster_image" :src="item.poster_image" class="ac-poster" />
+            <img
+              v-if="workPosterSrc(item)"
+              :src="workPosterSrc(item)"
+              class="ac-poster"
+              alt=""
+              @error="handlePosterError(item)"
+            />
+            <span v-else class="ac-poster ac-poster-placeholder">이미지 없음</span>
             <div class="ac-info">
               <strong>{{ item.title_ko || item.title }}</strong>
               <span v-if="item.title_ko && item.title !== item.title_ko" class="ac-sub">{{ item.title }}</span>
@@ -115,9 +129,34 @@ export default {
       koTitleInput: "",
       searchTimer: null,
       submitError: "",
+      brokenPosterKeys: {},
     };
   },
   methods: {
+    posterKey(item) {
+      return `${item?.source || "local"}:${item?.external_id || item?.id || item?.title || ""}`;
+    },
+    normalizeImageUrl(value) {
+      const rawValue = String(value || "").trim();
+      if (!rawValue) return "";
+      if (rawValue.startsWith("/") || rawValue.startsWith("data:image/")) return rawValue;
+
+      const markdownMatch = rawValue.match(/\[[^\]]*\]\((https?:\/\/[^)]+)\)/);
+      if (markdownMatch) return markdownMatch[1];
+
+      const urlMatch = rawValue.match(/https?:\/\/[^\s)]+/);
+      return urlMatch ? urlMatch[0] : "";
+    },
+    workPosterSrc(item) {
+      if (!item || this.brokenPosterKeys[this.posterKey(item)]) return "";
+      return this.normalizeImageUrl(item.poster_image || item.work_poster || item.image || item.poster);
+    },
+    handlePosterError(item) {
+      this.brokenPosterKeys = {
+        ...this.brokenPosterKeys,
+        [this.posterKey(item)]: true,
+      };
+    },
     updateField(field, value) {
       this.$emit("update:recordForm", {
         ...this.recordForm,
@@ -160,8 +199,11 @@ export default {
         });
         this.selectedWork = Object.assign({}, item, work, { source: item.source });
         var displayTitle = work.title_ko || work.title || item.title;
-        this.updateField("title", displayTitle);
-        this.updateField("workId", work.id);
+        this.$emit("update:recordForm", {
+          ...this.recordForm,
+          title: displayTitle,
+          workId: work.id,
+        });
         this.koTitleInput = "";
       } catch (e) {
         console.error("작품 선택 실패:", e);
@@ -171,8 +213,11 @@ export default {
     clearSelection() {
       this.selectedWork = null;
       this.koTitleInput = "";
-      this.updateField("title", "");
-      this.updateField("workId", null);
+      this.$emit("update:recordForm", {
+        ...this.recordForm,
+        title: "",
+        workId: null,
+      });
       var self = this;
       this.$nextTick(function() {
         if (self.$refs.titleInput) self.$refs.titleInput.focus();
@@ -188,7 +233,7 @@ export default {
       }
     },
     handleSubmit() {
-      if (!this.selectedWork) {
+      if (!this.selectedWork && !this.recordForm.workId) {
         this.submitError = '작품을 검색해서 선택해주세요.';
         return;
       }
@@ -205,6 +250,16 @@ export default {
       }
       this.$emit("submit");
     },
+  },
+  mounted() {
+    if (this.recordForm.workId && this.recordForm.title) {
+      this.selectedWork = {
+        id: this.recordForm.workId,
+        title: this.recordForm.title,
+        title_ko: this.recordForm.title,
+        source: "local",
+      };
+    }
   },
   beforeUnmount() {
     clearTimeout(this.searchTimer);

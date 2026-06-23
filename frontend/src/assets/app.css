@@ -2761,6 +2761,25 @@ button {
   transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
 }
 
+.saved-card-poster {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  display: block;
+  margin: 0 0 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(137, 101, 158, .18);
+  background: #f5eef9;
+}
+
+.saved-card-poster-placeholder {
+  display: grid;
+  place-items: center;
+  color: #8b75a8;
+  font-size: 13px;
+  font-weight: 850;
+}
+
 .saved-card-delete {
   position: absolute;
   top: 14px;
@@ -3025,6 +3044,18 @@ button {
   border-radius: 4px;
   flex-shrink: 0;
 }
+
+.ac-poster-placeholder,
+.badge-poster-placeholder {
+  display: grid;
+  place-items: center;
+  color: #8b75a8;
+  background: #f5eef9;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.2;
+  text-align: center;
+}
 .ac-info {
   display: flex;
   flex-direction: column;
@@ -3236,6 +3267,45 @@ button {
   border-radius: 8px;
   padding: 14px;
   background: #fff;
+}
+
+.feed-card-header,
+.feed-user {
+  display: flex;
+  align-items: center;
+}
+
+.feed-card-header {
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.feed-user {
+  min-width: 0;
+  gap: 8px;
+}
+
+.feed-avatar {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #f1e9fb;
+  color: var(--purple-dark);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.feed-user b {
+  min-width: 0;
+  color: var(--ink);
+  font-weight: 850;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .feed-card small {

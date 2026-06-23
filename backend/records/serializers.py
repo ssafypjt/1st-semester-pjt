@@ -121,8 +121,9 @@ class RecordListSerializer(_OwnershipMixin, _LikeMixin, serializers.ModelSeriali
 class RecordDetailSerializer(_OwnershipMixin, _LikeMixin, serializers.ModelSerializer):
     """상세용 (work 전체, decoration, favorite_scene 포함).
 
-    작품은 작품명 텍스트(work_title)로 받는다. 같은 제목이면 Work 재사용,
-    없으면 새로 만든다. 하위호환을 위해 work_id 도 받지만 work_title 우선.
+    작품은 선택된 work_id를 우선 사용한다. work_id가 없을 때는
+    작품명 텍스트(work_title)로 받아 같은 제목이면 Work 재사용,
+    없으면 새로 만든다.
 
     work_type_hint:
         동명이작 구분을 위한 선택적 필드.
@@ -162,6 +163,8 @@ class RecordDetailSerializer(_OwnershipMixin, _LikeMixin, serializers.ModelSeria
     def _resolve_work(self, validated_data):
         title = (validated_data.pop('work_title', '') or '').strip()
         work_type = validated_data.pop('work_type_hint', 'anime')
+        if validated_data.get('work') is not None:
+            return
         if title:
             # title_ko + work_type 복합 키로 동명이작 구분.
             # 2단계에서 외부 API 연동 시 source + external_id 기반으로 교체 예정.
