@@ -367,7 +367,16 @@
           <div v-if="activePage === '홈'" class="home-feed">
             <p v-if="isFeedLoading" class="feed-empty">불러오는 중...</p>
             <p v-else-if="feedRecords.length === 0" class="feed-empty">아직 공유된 기록이 없습니다.</p>
-            <article v-for="rec in feedRecords" :key="rec.id" class="feed-card">
+            <article
+              v-for="rec in feedRecords"
+              :key="rec.id"
+              class="feed-card"
+              role="button"
+              tabindex="0"
+              @click="openFeedDiaryPreview(rec)"
+              @keydown.enter.prevent="openFeedDiaryPreview(rec)"
+              @keydown.space.prevent="openFeedDiaryPreview(rec)"
+            >
               <header class="feed-card-header">
                 <div class="feed-user">
                   <b>{{ rec.user_nickname || '익명' }}님의 기록</b>
@@ -402,9 +411,9 @@
                   <p v-if="rec.content" class="feed-content">{{ rec.content.length > 120 ? rec.content.slice(0, 120) + '…' : rec.content }}</p>
                 </div>
                 <footer class="feed-card-footer">
-                  <button type="button" class="feed-action" :class="{ liked: rec.is_liked }" @click="toggleFeedLike(rec)">{{ rec.is_liked ? '♥' : '♡' }} {{ rec.like_count || 0 }}</button>
-                  <button type="button" class="feed-action">💬 {{ rec.comment_count || 0 }}</button>
-                  <button v-if="rec.is_mine" type="button" class="feed-action feed-edit" @click="openFeedRecord(rec)">✎ 편집</button>
+                  <button type="button" class="feed-action" :class="{ liked: rec.is_liked }" @click.stop="toggleFeedLike(rec)">{{ rec.is_liked ? '♥' : '♡' }} {{ rec.like_count || 0 }}</button>
+                  <button type="button" class="feed-action" @click.stop>💬 {{ rec.comment_count || 0 }}</button>
+                  <button v-if="rec.is_mine" type="button" class="feed-action feed-edit" @click.stop="openFeedRecord(rec)">✎ 편집</button>
                 </footer>
               </div>
             </article>
@@ -461,6 +470,67 @@
           @close="closeBadgeModal"
           @toggle-badge="toggleRepresentativeBadge"
         />
+
+        <div v-if="isDiaryPreviewOpen" class="diary-preview-overlay" @click.self="closeFeedDiaryPreview">
+          <section class="diary-preview-modal" role="dialog" aria-modal="true" aria-label="다이어리 원본 보기">
+            <header class="diary-preview-header">
+              <div>
+                <small>DIARY PREVIEW</small>
+                <h3>{{ previewRecord.title || '제목 없는 기록' }}</h3>
+                <p v-if="previewRecord.author">{{ previewRecord.author }}님의 기록</p>
+              </div>
+              <button class="diary-preview-close" type="button" @click="closeFeedDiaryPreview">✕</button>
+            </header>
+
+            <div v-if="previewError" class="diary-preview-state error">{{ previewError }}</div>
+            <article class="scrapbook blank-scrapbook diary-preview-book" :class="{ loading: previewLoading }">
+              <div class="page left-page">
+                <div class="record-title-edit diary-preview-title">
+                  <small>{{ previewRecord.date }}</small>
+                  <strong>{{ previewRecord.title || '제목 없는 기록' }}</strong>
+                  <span class="stars">{{ previewStars }}</span>
+                </div>
+                <div v-if="isPreviewDiaryEmpty" class="blank-guide">
+                  <strong>{{ previewRecord.title || '다이어리 기록' }}</strong>
+                  <span>{{ previewRecord.memo || '저장된 꾸미기 요소가 없어 기본 기록 정보로 표시합니다.' }}</span>
+                </div>
+              </div>
+              <div class="binder" aria-hidden="true"><span v-for="ring in 7" :key="'preview-ring-' + ring"></span></div>
+              <div class="page right-page">
+                <div v-if="isPreviewDiaryEmpty" class="blank-guide right">
+                  <strong>감상 메모</strong>
+                  <span>{{ previewRecord.memo || '작성된 감상평이 없습니다.' }}</span>
+                </div>
+              </div>
+
+              <div class="decoration-layer diary-preview-layer">
+                <div
+                  v-for="item in previewPlacedItems"
+                  :key="item.id"
+                  class="placed-decoration diary-preview-decoration"
+                  :style="placementStyle(item)"
+                >
+                  <div class="placed-sticker" :class="item.tone" :style="stickerStyle(item)">
+                    <div
+                      v-if="item.type === 'bubble'"
+                      class="bubble-editor diary-preview-note"
+                      :class="item.bubbleType"
+                      :style="bubbleEditorStyle(item)"
+                    >
+                      <p :style="previewTextStyle(item)">{{ item.text }}</p>
+                    </div>
+                    <div v-else-if="item.type === 'text'" class="memo-editor diary-preview-note">
+                      <p :style="previewTextStyle(item)">{{ item.text }}</p>
+                    </div>
+                    <img v-else-if="item.imageSrc" :src="item.imageSrc" alt="다이어리 이미지" />
+                    <span v-else>{{ item.icon }}</span>
+                  </div>
+                </div>
+              </div>
+            </article>
+            <div v-if="previewLoading" class="diary-preview-loading">다이어리를 불러오는 중...</div>
+          </section>
+        </div>
 
         <!-- ── 공유 카드 모달 ── -->
         <div v-if="isShareModalOpen" class="share-modal-overlay" @click.self="closeShareModal">
@@ -594,6 +664,12 @@ export default {
       isFeedLoading: false,
       recordPreviewCandidateIndexes: {},
       brokenRecordPreviewImages: {},
+      isDiaryPreviewOpen: false,
+      previewLoading: false,
+      previewError: "",
+      previewRecord: {},
+      previewPlacedItems: [],
+      previewMainImageSrc: "",
       recordVisibility: "private",
       recordTitle: "",
       bubblePresetColors: ['#ffffff', '#fff5f5', '#fff8e1', '#e8f5e9', '#e3f2fd', '#f3e5f5', '#fce4ec', '#ede7f6'],
@@ -668,6 +744,128 @@ export default {
         this.openSavedCard(card);
       }
     },
+    async openFeedDiaryPreview(record) {
+      this.isDiaryPreviewOpen = true;
+      this.previewError = "";
+      this.previewLoading = false;
+
+      try {
+        this.setDiaryPreviewFromRecord(record);
+      } catch (error) {
+        console.error("다이어리 미리보기 초기화 실패:", error);
+        this.previewRecord = {
+          title: this.recordDisplayTitle(record),
+          author: record?.user_nickname || "",
+          date: this.formatDisplayDate(record?.watched_date || ""),
+          rating: record?.rating ?? 0,
+          memo: record?.content || "",
+        };
+        this.previewPlacedItems = this.previewFallbackItems(this.previewRecord, "");
+        this.previewMainImageSrc = "";
+      }
+
+      try {
+        const detail = await this.apiFetch(`/api/records/${record.id}/`);
+        this.setDiaryPreviewFromRecord(this.mergePreviewRecord(record, detail));
+      } catch (error) {
+        console.error("다이어리 미리보기 불러오기 실패:", error);
+        this.previewLoading = false;
+      }
+    },
+    closeFeedDiaryPreview() {
+      this.isDiaryPreviewOpen = false;
+      this.previewLoading = false;
+      this.previewError = "";
+      this.previewRecord = {};
+      this.previewPlacedItems = [];
+      this.previewMainImageSrc = "";
+    },
+    setDiaryPreviewFromRecord(record) {
+      const cd = record?.canvas_data || {};
+      const watchedDate = record?.watched_date ? this.formatDisplayDate(record.watched_date) : "";
+      const previewImage = this.normalizeImageUrl(
+        cd.main_image_src ||
+        cd.mainImageSrc ||
+        cd.imageSrc ||
+        record?.work_poster ||
+        record?.work?.poster_image ||
+        record?.work?.cover_image ||
+        record?.poster ||
+        record?.image ||
+        record?.imageSrc
+      );
+      const rawItems = Array.isArray(cd.placed_items) ? cd.placed_items : cd.placedItems;
+      const baseItems = Array.isArray(rawItems) ? this.cloneForSave(rawItems) : [];
+
+      this.previewRecord = {
+        title: this.recordDisplayTitle(record),
+        author: record?.user_nickname || "",
+        date: watchedDate,
+        rating: record?.rating ?? 0,
+        memo: record?.content || cd.memo || cd.record?.memo || cd.analysis?.phrase || "",
+      };
+      this.previewMainImageSrc = previewImage;
+      this.previewPlacedItems = baseItems.length > 0
+        ? baseItems
+        : this.previewFallbackItems(this.previewRecord, previewImage);
+    },
+    mergePreviewRecord(listRecord, detailRecord) {
+      const listCanvas = listRecord?.canvas_data || {};
+      const detailCanvas = detailRecord?.canvas_data || {};
+      return {
+        ...listRecord,
+        ...detailRecord,
+        work_title: detailRecord?.work_title || listRecord?.work_title,
+        work_poster: detailRecord?.work_poster || listRecord?.work_poster,
+        display_title: detailRecord?.display_title || listRecord?.display_title,
+        title: detailRecord?.title || listRecord?.title,
+        content: detailRecord?.content || listRecord?.content,
+        user_nickname: detailRecord?.user_nickname || listRecord?.user_nickname,
+        watched_date: detailRecord?.watched_date || listRecord?.watched_date,
+        rating: detailRecord?.rating ?? listRecord?.rating,
+        canvas_data: {
+          ...listCanvas,
+          ...detailCanvas,
+          title: detailCanvas.title || listCanvas.title,
+          anime_title: detailCanvas.anime_title || listCanvas.anime_title,
+          main_image_src: detailCanvas.main_image_src || listCanvas.main_image_src,
+          placed_items: detailCanvas.placed_items || listCanvas.placed_items,
+        },
+      };
+    },
+    previewFallbackItems(record, imageSrc) {
+      const items = [];
+      if (imageSrc) {
+        items.push({
+          id: "preview-main-image",
+          type: "image",
+          imageSrc,
+          tone: "custom-image",
+          x: 24,
+          y: 24,
+          width: 220,
+          rotate: -3,
+          scale: 1,
+          zIndex: 1,
+        });
+      }
+      const memoText = record.memo || `${record.title || "기록"}\n${record.rating ? `${record.rating} / 10` : ""}`.trim();
+      items.push({
+        id: "preview-memo",
+        type: "text",
+        text: memoText.length > 140 ? `${memoText.slice(0, 140)}…` : memoText,
+        tone: "memo-text",
+        x: imageSrc ? 56 : 32,
+        y: imageSrc ? 32 : 34,
+        width: 220,
+        height: 150,
+        rotate: 2,
+        fontSize: 15,
+        scale: 1,
+        zIndex: 2,
+      });
+      return items;
+    },
 
     formatFeedDate(dateStr) {
       if (!dateStr) return "";
@@ -702,6 +900,12 @@ export default {
     },
     selectedViewStars() {
       return this.stars(this.selectedView.rating);
+    },
+    previewStars() {
+      return this.stars(this.previewRecord.rating || 0);
+    },
+    isPreviewDiaryEmpty() {
+      return this.previewPlacedItems.length === 0 && !this.previewMainImageSrc;
     },
     isCanvasEmpty() {
       return this.placedItems.length === 0 && !this.mainImageSrc;
@@ -901,6 +1105,9 @@ export default {
       }
       if (this.isBadgeModalOpen) {
         this.closeBadgeModal();
+      }
+      if (this.isDiaryPreviewOpen) {
+        this.closeFeedDiaryPreview();
       }
     },
     openProfileModal() {
@@ -1184,6 +1391,12 @@ export default {
         transform: `rotate(${item.rotate || 0}deg) scale(${scale})`,
       };
     },
+    previewTextStyle(item) {
+      return {
+        fontSize: `${item.fontSize || 15}px`,
+        color: item.textColor || "#342a3f",
+      };
+    },
     canvasRect() {
       return this.$refs.canvasLayer.getBoundingClientRect();
     },
@@ -1269,8 +1482,12 @@ export default {
     recordDisplayTitle(record) {
       const candidates = [
         record?.work_title,
+        record?.canvas_data?.work_title,
+        record?.canvas_data?.anime_title,
+        record?.canvas_data?.record?.title,
         record?.work?.title_ko,
         record?.work?.title,
+        record?.work?.name,
         record?.anime_title,
         record?.display_title,
         record?.title,
