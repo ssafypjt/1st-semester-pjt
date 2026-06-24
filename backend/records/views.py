@@ -60,13 +60,27 @@ class RecordViewSet(viewsets.ModelViewSet):
             ).values_list('following_id', flat=True)
             # 본인 기록은 draft 포함 전체
             # 타인 기록은 public+게시 완료 또는 (friends+게시 완료 AND 팔로우 중)
-            return qs.filter(
+            qs = qs.filter(
                 Q(user=user) |
                 Q(visibility='public', status='published') |
                 Q(visibility='friends', status='published', user_id__in=following_ids)
             )
-        # 비로그인: 공개+게시 완료만
-        return qs.filter(visibility='public', status='published')
+        else:
+            # 비로그인: 공개+게시 완료만
+            qs = qs.filter(visibility='public', status='published')
+
+        # ?q= → 제목·태그 통합 검색 (SearchFilter의 ?search= 와 별도)
+        q = self.request.query_params.get('q', '').strip()
+        if q:
+            qs = qs.filter(
+                Q(title__icontains=q) |
+                Q(content__icontains=q) |
+                Q(work__title__icontains=q) |
+                Q(work__title_ko__icontains=q) |
+                Q(work__anilist_tags__icontains=q)
+            )
+
+        return qs
 
     def get_serializer_class(self):
         if self.action == 'list':

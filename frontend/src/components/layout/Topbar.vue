@@ -1,11 +1,16 @@
 <template>
   <header class="topbar">
     <label class="search">
-      <input :value="query" placeholder="애니 제목, 캐릭터, 태그로 검색해보세요" @input="$emit('update:query', $event.target.value)" />
-      <img class="search-icon-image" :src="searchIconUrl" alt="" />
+      <input
+        :value="query"
+        placeholder="애니 제목, 캐릭터, 태그로 검색해보세요"
+        @input="$emit('update:query', $event.target.value)"
+        @keydown.enter.prevent="$emit('search', query)"
+      />
+      <img class="search-icon-image" :src="searchIconUrl" alt="" @click="$emit('search', query)" />
     </label>
     <div class="top-actions">
-      <button class="primary" type="button" @click="$emit('open-record')">＋ 새 기록</button>
+      <button class="primary" type="button" @click="$emit('open-record')">+ 새 기록</button>
       <button class="icon-btn notification-btn" type="button" title="알림" aria-label="알림">
         <img :src="notificationIconUrl" alt="" />
       </button>
@@ -66,7 +71,7 @@ export default {
       required: true,
     },
   },
-  emits: ["update:query", "open-record", "toggle-profile", "view-profile", "logout"],
+  emits: ["update:query", "search", "open-record", "toggle-profile", "view-profile", "logout"],
   computed: {
     profileImageUrl() {
       return this.currentUser?.profile_image || this.basicProfileUrl;

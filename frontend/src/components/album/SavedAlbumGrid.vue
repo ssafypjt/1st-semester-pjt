@@ -14,6 +14,7 @@
       <button class="saved-card-delete" type="button" title="삭제" aria-label="삭제" @click.stop="$emit('delete-card', card.id)">
         ×
       </button>
+      <h3 class="saved-card-record-title">{{ card.recordTitle || card.title }}</h3>
       <img
         v-if="currentImageSrc(card)"
         class="saved-card-poster"
@@ -25,7 +26,7 @@
         이미지 없음
       </div>
       <small>{{ card.date }}</small>
-      <h3>{{ card.title }}</h3>
+      <p class="saved-card-anime-title">{{ card.title }}</p>
       <p>{{ card.rating }} / 10 {{ stars(card.rating) }}</p>
       <span>스티커 {{ card.stickerCount || 0 }}개 · 메모 {{ card.memoCount || 0 }}개 저장됨</span>
     </article>
