@@ -207,6 +207,34 @@ def share_card_detail(request, card_id):
 
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def my_share_cards(request):
+    """로그인 사용자의 전체 공유 카드 목록 (카드함).
+
+    GET /api/shares/my/
+    """
+    cards = (ShareCard.objects
+             .filter(record__user=request.user)
+             .select_related('template', 'record__work')
+             .order_by('-created_at'))
+    serializer = ShareCardSerializer(cards, many=True,
+                                     context={'request': request})
+    return Response(serializer.data)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_share_card(request, card_id):
+    """공유 카드 삭제 (본인 카드만).
+
+    DELETE /api/shares/card/<card_id>/delete/
+    """
+    card = get_object_or_404(ShareCard, pk=card_id, record__user=request.user)
+    card.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['GET'])
 @permission_classes([AllowAny])
 def list_templates(request):
     """활성 카드 템플릿 목록.

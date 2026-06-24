@@ -40,13 +40,15 @@ class GMSClient:
             'model': kwargs.get('model', self.model),
             'messages': messages,
             'temperature': kwargs.get('temperature', 1),
-            'max_completion_tokens': kwargs.get('max_completion_tokens', 1024),
+            'max_completion_tokens': kwargs.get('max_completion_tokens', 4096),
         }
 
         if kwargs.get('json_mode', True):
             payload['response_format'] = {'type': 'json_object'}
 
         try:
+            logger.info('GMS 요청: model=%s, messages=%d개, url=%s',
+                        payload['model'], len(messages), self.api_url)
             resp = requests.post(
                 self.api_url,
                 headers=self._headers(),
@@ -54,7 +56,11 @@ class GMSClient:
                 timeout=self.timeout,
             )
             resp.raise_for_status()
-            return resp.json()
+            data = resp.json()
+            logger.info('GMS 응답: status=%s, finish=%s',
+                        resp.status_code,
+                        data.get('choices', [{}])[0].get('finish_reason', 'N/A'))
+            return data
         except requests.exceptions.Timeout:
             raise GMSError('GMS API 요청 시간 초과')
         except requests.exceptions.HTTPError as e:
@@ -75,10 +81,17 @@ class GMSClient:
 
         try:
             content = response['choices'][0]['message']['content']
+            if not content or not content.strip():
+                finish = response['choices'][0].get('finish_reason', 'unknown')
+                logger.error('AI 응답 빈 content — finish_reason: %s, response: %s', finish, response)
+                raise GMSError(f'AI가 빈 응답을 반환했습니다 (finish_reason: {finish})')
             result = json.loads(content)
-        except (KeyError, IndexError, json.JSONDecodeError) as e:
-            logger.error('AI 응답 파싱 실패: %s — 원본: %s', e, response)
-            raise GMSError(f'AI 응답 파싱 실패: {e}')
+        except (KeyError, IndexError) as e:
+            logger.error('AI 응답 구조 오류: %s — 원본: %s', e, response)
+            raise GMSError(f'AI 응답 구조 오류: {e}')
+        except json.JSONDecodeError as e:
+            logger.error('AI 응답 JSON 파싱 실패: %s — content: %s', e, content[:500] if content else '(empty)')
+            raise GMSError(f'AI 응답 JSON 파싱 실패: {e}')
 
         # 토큰 사용량
         usage = response.get('usage', {})
