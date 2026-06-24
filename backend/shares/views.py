@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from django.conf import settings
 from records.models import Record, RecordImage
 from .models import CardTemplate, ShareCard
-from .prompts import build_card_prompt
+from .prompts import build_content_prompt, build_card_prompt
 from .renderer import render_card
 from .serializers import (CardTemplateSerializer, ShareCardCreateSerializer,
                           ShareCardSerializer)
@@ -56,15 +56,16 @@ def _resolve_image_path(url: str) -> str | None:
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def generate_share_card(request, record_id):
-    """공유 카드 생성.
+    """공유 카드 생성 — 2단계 AI 파이프라인.
 
     POST /api/shares/<record_id>/generate/
 
     1. Record 조회 (본인 기록만)
-    2. 활성 템플릿 목록 조회
-    3. AI에게 프롬프트 전송 → 레이아웃 JSON 수신
-    4. Pillow로 이미지 렌더링
-    5. ShareCard 저장 후 반환
+    2. 다이어리 데이터 추출 (메모 + 말풍선 + 감상평)
+    3. Stage 1: 콘텐츠 생성 AI (텍스트 요약/생성)
+    4. Stage 2: 배치 AI (mood·tags·제목 결정)
+    5. Pillow로 이미지 렌더링
+    6. ShareCard 저장 후 반환
     """
     # 1) 본인 기록 조회
     record = get_object_or_404(
@@ -81,12 +82,19 @@ def generate_share_card(request, record_id):
         or []
     ) if isinstance(canvas_data, dict) else []
 
-    # 3) AI 프롬프트 조립 & 호출 (테마·감상·태그만 결정)
-    prompt = build_card_prompt(record, placed_items=placed_items)
-
     try:
         client = GMSClient()
-        layout_data = client.generate_card_layout(prompt)
+
+        # 3) Stage 1 — 콘텐츠 생성 (메모·말풍선·감상평 종합)
+        content_prompt = build_content_prompt(record, placed_items=placed_items)
+        stage1_result = client.generate_content(content_prompt)
+        stage1_meta = stage1_result.pop('_meta', {})
+
+        # 4) Stage 2 — 배치 (작품 정보 + Stage 1 결과 → 최종 카드 데이터)
+        card_prompt = build_card_prompt(record, stage1_result,
+                                        placed_items=placed_items)
+        layout_data = client.generate_card_layout(card_prompt)
+
     except GMSError as e:
         logger.error('공유 카드 AI 생성 실패 (record=%s): %s', record_id, e)
         return Response(
@@ -94,8 +102,12 @@ def generate_share_card(request, record_id):
             status=status.HTTP_502_BAD_GATEWAY,
         )
 
-    # 메타데이터 분리
+    # 메타데이터 분리 (Stage 2 기준, Stage 1 토큰도 합산)
     meta = layout_data.pop('_meta', {})
+    meta['prompt_tokens'] = (meta.get('prompt_tokens', 0)
+                             + stage1_meta.get('prompt_tokens', 0))
+    meta['completion_tokens'] = (meta.get('completion_tokens', 0)
+                                 + stage1_meta.get('completion_tokens', 0))
 
     # 날짜 보강
     if record.watched_date and not layout_data.get('date'):
