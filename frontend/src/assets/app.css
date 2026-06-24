@@ -769,6 +769,19 @@ button {
   background: #fff;
 }
 
+.notification-btn {
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+}
+
+.notification-btn img {
+  width: 23px;
+  height: 23px;
+  display: block;
+  object-fit: contain;
+}
+
 .avatar {
   border-radius: 50%;
   background:

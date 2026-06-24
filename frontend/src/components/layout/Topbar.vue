@@ -6,7 +6,9 @@
     </label>
     <div class="top-actions">
       <button class="primary" type="button" @click="$emit('open-record')">＋ 새 기록</button>
-      <button class="icon-btn" type="button" title="알림">!</button>
+      <button class="icon-btn notification-btn" type="button" title="알림" aria-label="알림">
+        <img :src="notificationIconUrl" alt="" />
+      </button>
       <div class="profile-menu-wrap" ref="profileMenu">
         <button class="avatar" type="button" title="Profile" @click.stop="$emit('toggle-profile')">
           <img v-if="currentUser && currentUser.profile_image" :src="currentUser.profile_image" alt="" />
@@ -26,11 +28,17 @@
 
 <script>
 import ProfileDropdown from "../profile/ProfileDropdown.vue";
+import notificationIconUrl from "../../assets/images/notification_icon.png";
 
 export default {
   name: "Topbar",
   components: {
     ProfileDropdown,
+  },
+  data() {
+    return {
+      notificationIconUrl,
+    };
   },
   props: {
     query: {

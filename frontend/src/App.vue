@@ -346,7 +346,7 @@
             @open-badges="openBadgeModal"
           />
 
-          <div v-if="activePage !== nav[4]" class="detail-grid">
+          <div v-if="activePage !== nav[0] && activePage !== nav[1] && activePage !== nav[4]" class="detail-grid">
             <article
               v-for="card in detailCards"
               :key="card.title"
@@ -411,9 +411,9 @@
                   <p v-if="rec.content" class="feed-content">{{ rec.content.length > 120 ? rec.content.slice(0, 120) + '…' : rec.content }}</p>
                 </div>
                 <footer class="feed-card-footer">
-                  <button type="button" class="feed-action" :class="{ liked: rec.is_liked }" @click.stop="toggleFeedLike(rec)">{{ rec.is_liked ? '♥' : '♡' }} {{ rec.like_count || 0 }}</button>
-                  <button type="button" class="feed-action" @click.stop>💬 {{ rec.comment_count || 0 }}</button>
-                  <button v-if="rec.is_mine" type="button" class="feed-action feed-edit" @click.stop="openFeedRecord(rec)">✎ 편집</button>
+                  <button type="button" class="feed-action" :class="{ liked: rec.is_liked }" @click.stop="toggleFeedLike(rec)" @keydown.enter.stop @keydown.space.stop>{{ rec.is_liked ? '♥' : '♡' }} {{ rec.like_count || 0 }}</button>
+                  <button type="button" class="feed-action" @click.stop @keydown.enter.stop @keydown.space.stop>💬 {{ rec.comment_count || 0 }}</button>
+                  <button v-if="rec.is_mine" type="button" class="feed-action feed-edit" @click.stop="openFeedRecord(rec)" @keydown.enter.stop @keydown.space.stop>✎ 편집</button>
                 </footer>
               </div>
             </article>
@@ -722,167 +722,7 @@ export default {
         mode: 'login',  // 'login' | 'signup'
       },
 
-      // ── 피드 좋아요 토글 ──
-    async toggleFeedLike(record) {
-      if (!this.currentUser) return;
-      try {
-        const data = await this.apiFetch(`/api/records/${record.id}/like/`, { method: "POST" });
-        record.is_liked = data.liked;
-        record.like_count = data.like_count;
-      } catch (error) {
-        console.error("좋아요 실패:", error);
-      }
-    },
-
-    async openFeedRecord(record) {
-      try {
-        const detail = await this.apiFetch(`/api/records/${record.id}/`);
-        this.openSavedCard(this.apiRecordToSavedCard(detail));
-      } catch (error) {
-        console.error("피드 기록 열기 실패:", error);
-        const card = this.apiRecordToSavedCard(record);
-        this.openSavedCard(card);
-      }
-    },
-    async openFeedDiaryPreview(record) {
-      this.isDiaryPreviewOpen = true;
-      this.previewError = "";
-      this.previewLoading = false;
-
-      try {
-        this.setDiaryPreviewFromRecord(record);
-      } catch (error) {
-        console.error("다이어리 미리보기 초기화 실패:", error);
-        this.previewRecord = {
-          title: this.recordDisplayTitle(record),
-          author: record?.user_nickname || "",
-          date: this.formatDisplayDate(record?.watched_date || ""),
-          rating: record?.rating ?? 0,
-          memo: record?.content || "",
-        };
-        this.previewPlacedItems = this.previewFallbackItems(this.previewRecord, "");
-        this.previewMainImageSrc = "";
-      }
-
-      try {
-        const detail = await this.apiFetch(`/api/records/${record.id}/`);
-        this.setDiaryPreviewFromRecord(this.mergePreviewRecord(record, detail));
-      } catch (error) {
-        console.error("다이어리 미리보기 불러오기 실패:", error);
-        this.previewLoading = false;
-      }
-    },
-    closeFeedDiaryPreview() {
-      this.isDiaryPreviewOpen = false;
-      this.previewLoading = false;
-      this.previewError = "";
-      this.previewRecord = {};
-      this.previewPlacedItems = [];
-      this.previewMainImageSrc = "";
-    },
-    setDiaryPreviewFromRecord(record) {
-      const cd = record?.canvas_data || {};
-      const watchedDate = record?.watched_date ? this.formatDisplayDate(record.watched_date) : "";
-      const previewImage = this.normalizeImageUrl(
-        cd.main_image_src ||
-        cd.mainImageSrc ||
-        cd.imageSrc ||
-        record?.work_poster ||
-        record?.work?.poster_image ||
-        record?.work?.cover_image ||
-        record?.poster ||
-        record?.image ||
-        record?.imageSrc
-      );
-      const rawItems = Array.isArray(cd.placed_items) ? cd.placed_items : cd.placedItems;
-      const baseItems = Array.isArray(rawItems) ? this.cloneForSave(rawItems) : [];
-
-      this.previewRecord = {
-        title: this.recordDisplayTitle(record),
-        author: record?.user_nickname || "",
-        date: watchedDate,
-        rating: record?.rating ?? 0,
-        memo: record?.content || cd.memo || cd.record?.memo || cd.analysis?.phrase || "",
-      };
-      this.previewMainImageSrc = previewImage;
-      this.previewPlacedItems = baseItems.length > 0
-        ? baseItems
-        : this.previewFallbackItems(this.previewRecord, previewImage);
-    },
-    mergePreviewRecord(listRecord, detailRecord) {
-      const listCanvas = listRecord?.canvas_data || {};
-      const detailCanvas = detailRecord?.canvas_data || {};
-      return {
-        ...listRecord,
-        ...detailRecord,
-        work_title: detailRecord?.work_title || listRecord?.work_title,
-        work_poster: detailRecord?.work_poster || listRecord?.work_poster,
-        display_title: detailRecord?.display_title || listRecord?.display_title,
-        title: detailRecord?.title || listRecord?.title,
-        content: detailRecord?.content || listRecord?.content,
-        user_nickname: detailRecord?.user_nickname || listRecord?.user_nickname,
-        watched_date: detailRecord?.watched_date || listRecord?.watched_date,
-        rating: detailRecord?.rating ?? listRecord?.rating,
-        canvas_data: {
-          ...listCanvas,
-          ...detailCanvas,
-          title: detailCanvas.title || listCanvas.title,
-          anime_title: detailCanvas.anime_title || listCanvas.anime_title,
-          main_image_src: detailCanvas.main_image_src || listCanvas.main_image_src,
-          placed_items: detailCanvas.placed_items || listCanvas.placed_items,
-        },
-      };
-    },
-    previewFallbackItems(record, imageSrc) {
-      const items = [];
-      if (imageSrc) {
-        items.push({
-          id: "preview-main-image",
-          type: "image",
-          imageSrc,
-          tone: "custom-image",
-          x: 24,
-          y: 24,
-          width: 220,
-          rotate: -3,
-          scale: 1,
-          zIndex: 1,
-        });
-      }
-      const memoText = record.memo || `${record.title || "기록"}\n${record.rating ? `${record.rating} / 10` : ""}`.trim();
-      items.push({
-        id: "preview-memo",
-        type: "text",
-        text: memoText.length > 140 ? `${memoText.slice(0, 140)}…` : memoText,
-        tone: "memo-text",
-        x: imageSrc ? 56 : 32,
-        y: imageSrc ? 32 : 34,
-        width: 220,
-        height: 150,
-        rotate: 2,
-        fontSize: 15,
-        scale: 1,
-        zIndex: 2,
-      });
-      return items;
-    },
-
-    formatFeedDate(dateStr) {
-      if (!dateStr) return "";
-      const d = new Date(dateStr);
-      const now = new Date();
-      const diff = now - d;
-      const mins = Math.floor(diff / 60000);
-      if (mins < 1) return "방금 전";
-      if (mins < 60) return `${mins}분 전`;
-      const hours = Math.floor(mins / 60);
-      if (hours < 24) return `${hours}시간 전`;
-      const days = Math.floor(hours / 24);
-      if (days < 7) return `${days}일 전`;
-      return d.toLocaleDateString("ko-KR");
-    },
-
-    // ── 공유 카드 ──
+      // ── 공유 카드 ──
       isShareModalOpen: false,   // 공유 모달 열림
       shareCards: [],            // 생성된 공유 카드 목록
       isGeneratingCard: false,   // AI 카드 생성 중
@@ -1047,6 +887,171 @@ export default {
     window.removeEventListener("beforeunload", this._beforeUnloadHandler);
   },
   methods: {
+    async toggleFeedLike(record) {
+      if (!this.currentUser) return;
+      try {
+        const data = await this.apiFetch(`/api/records/${record.id}/like/`, { method: "POST" });
+        record.is_liked = data.liked;
+        record.like_count = data.like_count;
+      } catch (error) {
+        console.error("좋아요 실패:", error);
+      }
+    },
+    async openFeedRecord(record) {
+      if (!record?.id) {
+        console.error("피드 기록 열기 실패: record id가 없습니다.", record);
+        return;
+      }
+      this.closeFeedDiaryPreview();
+      try {
+        const detail = await this.apiFetch(`/api/records/${record.id}/`);
+        const card = this.apiRecordToSavedCard(this.mergePreviewRecord(record, detail));
+        this.openSavedCard(card);
+      } catch (error) {
+        console.error("피드 기록 열기 실패:", error);
+        const card = this.apiRecordToSavedCard(record);
+        this.openSavedCard(card);
+      }
+    },
+    async openFeedDiaryPreview(record) {
+      this.isDiaryPreviewOpen = true;
+      this.previewError = "";
+      this.previewLoading = false;
+
+      try {
+        this.setDiaryPreviewFromRecord(record);
+      } catch (error) {
+        console.error("다이어리 미리보기 초기화 실패:", error);
+        this.previewRecord = {
+          title: this.recordDisplayTitle(record),
+          author: record?.user_nickname || "",
+          date: this.formatDisplayDate(record?.watched_date || ""),
+          rating: record?.rating ?? 0,
+          memo: record?.content || "",
+        };
+        this.previewPlacedItems = this.previewFallbackItems(this.previewRecord, "");
+        this.previewMainImageSrc = "";
+      }
+
+      try {
+        const detail = await this.apiFetch(`/api/records/${record.id}/`);
+        this.setDiaryPreviewFromRecord(this.mergePreviewRecord(record, detail));
+      } catch (error) {
+        console.error("다이어리 미리보기 불러오기 실패:", error);
+        this.previewLoading = false;
+      }
+    },
+    closeFeedDiaryPreview() {
+      this.isDiaryPreviewOpen = false;
+      this.previewLoading = false;
+      this.previewError = "";
+      this.previewRecord = {};
+      this.previewPlacedItems = [];
+      this.previewMainImageSrc = "";
+    },
+    setDiaryPreviewFromRecord(record) {
+      const cd = record?.canvas_data || {};
+      const watchedDate = record?.watched_date ? this.formatDisplayDate(record.watched_date) : "";
+      const previewImage = this.normalizeImageUrl(
+        cd.main_image_src ||
+        cd.mainImageSrc ||
+        cd.imageSrc ||
+        record?.work_poster ||
+        record?.work?.poster_image ||
+        record?.work?.cover_image ||
+        record?.poster ||
+        record?.image ||
+        record?.imageSrc
+      );
+      const rawItems = Array.isArray(cd.placed_items) ? cd.placed_items : cd.placedItems;
+      const baseItems = Array.isArray(rawItems) ? this.cloneForSave(rawItems) : [];
+
+      this.previewRecord = {
+        title: this.recordDisplayTitle(record),
+        author: record?.user_nickname || "",
+        date: watchedDate,
+        rating: record?.rating ?? 0,
+        memo: record?.content || cd.memo || cd.record?.memo || cd.analysis?.phrase || "",
+      };
+      this.previewMainImageSrc = previewImage;
+      this.previewPlacedItems = baseItems.length > 0
+        ? baseItems
+        : this.previewFallbackItems(this.previewRecord, previewImage);
+    },
+    mergePreviewRecord(listRecord, detailRecord) {
+      const listCanvas = listRecord?.canvas_data || {};
+      const detailCanvas = detailRecord?.canvas_data || {};
+      return {
+        ...listRecord,
+        ...detailRecord,
+        work_title: detailRecord?.work_title || listRecord?.work_title,
+        work_poster: detailRecord?.work_poster || listRecord?.work_poster,
+        display_title: detailRecord?.display_title || listRecord?.display_title,
+        title: detailRecord?.title || listRecord?.title,
+        content: detailRecord?.content || listRecord?.content,
+        user_nickname: detailRecord?.user_nickname || listRecord?.user_nickname,
+        watched_date: detailRecord?.watched_date || listRecord?.watched_date,
+        rating: detailRecord?.rating ?? listRecord?.rating,
+        canvas_data: {
+          ...listCanvas,
+          ...detailCanvas,
+          title: detailCanvas.title || listCanvas.title,
+          anime_title: detailCanvas.anime_title || detailCanvas.animeTitle || listCanvas.anime_title || listCanvas.animeTitle,
+          animeTitle: detailCanvas.animeTitle || detailCanvas.anime_title || listCanvas.animeTitle || listCanvas.anime_title,
+          main_image_src: detailCanvas.main_image_src || detailCanvas.mainImageSrc || listCanvas.main_image_src || listCanvas.mainImageSrc,
+          mainImageSrc: detailCanvas.mainImageSrc || detailCanvas.main_image_src || listCanvas.mainImageSrc || listCanvas.main_image_src,
+          placed_items: detailCanvas.placed_items || detailCanvas.placedItems || listCanvas.placed_items || listCanvas.placedItems,
+          placedItems: detailCanvas.placedItems || detailCanvas.placed_items || listCanvas.placedItems || listCanvas.placed_items,
+        },
+      };
+    },
+    previewFallbackItems(record, imageSrc) {
+      const items = [];
+      if (imageSrc) {
+        items.push({
+          id: "preview-main-image",
+          type: "image",
+          imageSrc,
+          tone: "custom-image",
+          x: 24,
+          y: 24,
+          width: 220,
+          rotate: -3,
+          scale: 1,
+          zIndex: 1,
+        });
+      }
+      const memoText = record.memo || `${record.title || "기록"}\n${record.rating ? `${record.rating} / 10` : ""}`.trim();
+      items.push({
+        id: "preview-memo",
+        type: "text",
+        text: memoText.length > 140 ? `${memoText.slice(0, 140)}…` : memoText,
+        tone: "memo-text",
+        x: imageSrc ? 56 : 32,
+        y: imageSrc ? 32 : 34,
+        width: 220,
+        height: 150,
+        rotate: 2,
+        fontSize: 15,
+        scale: 1,
+        zIndex: 2,
+      });
+      return items;
+    },
+    formatFeedDate(dateStr) {
+      if (!dateStr) return "";
+      const d = new Date(dateStr);
+      const now = new Date();
+      const diff = now - d;
+      const mins = Math.floor(diff / 60000);
+      if (mins < 1) return "방금 전";
+      if (mins < 60) return `${mins}분 전`;
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) return `${hours}시간 전`;
+      const days = Math.floor(hours / 24);
+      if (days < 7) return `${days}일 전`;
+      return d.toLocaleDateString("ko-KR");
+    },
     async checkAuth() {
       try {
         this.currentUser = await this.apiFetch("/api/auth/me/");
@@ -1840,10 +1845,12 @@ export default {
     // ── 백엔드 Record → 프론트 savedCard 포맷 변환 헬퍼 ──────────────────
     apiRecordToSavedCard(record) {
       const cd = record.canvas_data || {};
-      const placedItems = cd.placed_items || [];
+      const placedItems = Array.isArray(cd.placed_items)
+        ? cd.placed_items
+        : (Array.isArray(cd.placedItems) ? cd.placedItems : []);
       const recordTitle = (cd.title || "").trim();
-      const workTitle = record.work?.title_ko || record.work?.title || "";
-      const title = (cd.anime_title || "").trim()
+      const workTitle = record.work?.title_ko || record.work?.title || record.work_title || "";
+      const title = (cd.anime_title || cd.animeTitle || "").trim()
         || workTitle
         || this.recordDisplayTitle(record);
       const watchedDate = record.watched_date
@@ -1877,12 +1884,12 @@ export default {
             title,
             date: watchedDate,
             rating: record.rating ?? 0,
-            memo: record.content || "",
+            memo: record.content || cd.memo || cd.record?.memo || "",
             tags: [],
             workId: record.work?.id || record.work || null,
           },
           placedItems,
-          mainImageSrc: this.normalizeImageUrl(cd.main_image_src),
+          mainImageSrc: this.normalizeImageUrl(cd.main_image_src || cd.mainImageSrc),
           analysis: cd.analysis || null,
         },
       };
