@@ -14,6 +14,16 @@
       <button class="saved-card-delete" type="button" title="삭제" aria-label="삭제" @click.stop="$emit('delete-card', card.id)">
         ×
       </button>
+      <img
+        v-if="currentImageSrc(card)"
+        class="saved-card-poster"
+        :src="currentImageSrc(card)"
+        alt="작품 이미지"
+        @error="handleImageError(card)"
+      />
+      <div v-else class="saved-card-poster saved-card-poster-placeholder">
+        이미지 없음
+      </div>
       <small>{{ card.date }}</small>
       <h3>{{ card.title }}</h3>
       <p>{{ card.rating }} / 10 {{ stars(card.rating) }}</p>
@@ -40,5 +50,41 @@ export default {
     },
   },
   emits: ["open-card", "delete-card"],
+  data() {
+    return {
+      imageCandidateIndexes: {},
+      brokenImages: {},
+    };
+  },
+  methods: {
+    imageCandidates(card) {
+      if (Array.isArray(card.imageCandidates) && card.imageCandidates.length > 0) {
+        return card.imageCandidates;
+      }
+      return card.imageSrc ? [card.imageSrc] : [];
+    },
+    currentImageSrc(card) {
+      if (this.brokenImages[card.id]) return "";
+      const candidates = this.imageCandidates(card);
+      const index = this.imageCandidateIndexes[card.id] || 0;
+      return candidates[index] || "";
+    },
+    handleImageError(card) {
+      const candidates = this.imageCandidates(card);
+      const currentIndex = this.imageCandidateIndexes[card.id] || 0;
+      const nextIndex = currentIndex + 1;
+      if (nextIndex < candidates.length) {
+        this.imageCandidateIndexes = {
+          ...this.imageCandidateIndexes,
+          [card.id]: nextIndex,
+        };
+        return;
+      }
+      this.brokenImages = {
+        ...this.brokenImages,
+        [card.id]: true,
+      };
+    },
+  },
 };
 </script>
