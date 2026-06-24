@@ -357,25 +357,43 @@
             <article v-for="rec in feedRecords" :key="rec.id" class="feed-card">
               <header class="feed-card-header">
                 <div class="feed-user">
-                  <span class="feed-avatar">{{ (rec.user_nickname || '?')[0] }}</span>
-                  <b>{{ rec.user_nickname }}</b>
+                  <b>{{ rec.user_nickname || '익명' }}님의 기록</b>
                 </div>
                 <time>{{ formatFeedDate(rec.created_at) }}</time>
               </header>
+              <div class="record-preview" :class="recordPreviewClass(rec)">
+                <img
+                  v-if="currentRecordPreviewImage(rec)"
+                  class="record-preview-image"
+                  :src="currentRecordPreviewImage(rec)"
+                  :alt="recordDisplayTitle(rec)"
+                  @error="handleRecordPreviewImageError(rec)"
+                />
+                <div v-else class="record-preview-empty-copy">
+                  <small>다이어리 기록</small>
+                  <b>{{ recordDisplayTitle(rec) }}</b>
+                </div>
+                <span class="record-preview-sticker sticker-a">✦</span>
+                <span class="record-preview-sticker sticker-b">♡</span>
+                <span class="record-preview-sticker sticker-c">✧</span>
+                <div class="preview-memo-note">
+                  <b>{{ rec.rating ? `${rec.rating} / 10` : '감상 기록' }}</b>
+                  <p>{{ recordPreviewText(rec) }}</p>
+                </div>
+              </div>
               <div class="feed-card-body">
-                <img v-if="rec.work_poster" class="feed-poster" :src="rec.work_poster" :alt="rec.work_title" />
                 <div class="feed-info">
-                  <h3>{{ rec.title || rec.work_title || '제목 없음' }}</h3>
+                  <h3>{{ recordDisplayTitle(rec) }}</h3>
                   <p v-if="rec.work_title" class="feed-work">{{ rec.work_title }}</p>
                   <span v-if="rec.rating" class="feed-rating">{{ stars(rec.rating) }} {{ rec.rating }}</span>
                   <p v-if="rec.content" class="feed-content">{{ rec.content.length > 120 ? rec.content.slice(0, 120) + '…' : rec.content }}</p>
                 </div>
+                <footer class="feed-card-footer">
+                  <button type="button" class="feed-action" :class="{ liked: rec.is_liked }" @click="toggleFeedLike(rec)">{{ rec.is_liked ? '♥' : '♡' }} {{ rec.like_count || 0 }}</button>
+                  <button type="button" class="feed-action">💬 {{ rec.comment_count || 0 }}</button>
+                  <button v-if="rec.is_mine" type="button" class="feed-action feed-edit" @click="openFeedRecord(rec)">✎ 편집</button>
+                </footer>
               </div>
-              <footer class="feed-card-footer">
-                <button type="button" class="feed-action" :class="{ liked: rec.is_liked }" @click="toggleFeedLike(rec)">{{ rec.is_liked ? '♥' : '♡' }} {{ rec.like_count || 0 }}</button>
-                <button type="button" class="feed-action">💬 {{ rec.comment_count || 0 }}</button>
-                <button v-if="rec.is_mine" type="button" class="feed-action feed-edit" @click="openFeedRecord(rec)">✎ 편집</button>
-              </footer>
             </article>
           </div>
 
@@ -561,6 +579,8 @@ export default {
       savedCards: [],
       feedRecords: [],
       isFeedLoading: false,
+      recordPreviewCandidateIndexes: {},
+      brokenRecordPreviewImages: {},
       recordVisibility: "private",
       recordTitle: "",
       bubblePresetColors: ['#ffffff', '#fff5f5', '#fff8e1', '#e8f5e9', '#e3f2fd', '#f3e5f5', '#fce4ec', '#ede7f6'],
@@ -625,9 +645,15 @@ export default {
       }
     },
 
-    openFeedRecord(record) {
-      const card = this.apiRecordToSavedCard(record);
-      this.openSavedCard(card);
+    async openFeedRecord(record) {
+      try {
+        const detail = await this.apiFetch(`/api/records/${record.id}/`);
+        this.openSavedCard(this.apiRecordToSavedCard(detail));
+      } catch (error) {
+        console.error("피드 기록 열기 실패:", error);
+        const card = this.apiRecordToSavedCard(record);
+        this.openSavedCard(card);
+      }
     },
 
     formatFeedDate(dateStr) {
@@ -1154,6 +1180,96 @@ export default {
     cloneForSave(value) {
       return JSON.parse(JSON.stringify(value));
     },
+    normalizeImageUrl(value) {
+      const rawValue = String(value || "").trim();
+      if (!rawValue) return "";
+      if (rawValue.startsWith("/") || rawValue.startsWith("data:image/")) return rawValue;
+
+      const markdownMatch = rawValue.match(/\[[^\]]*\]\((https?:\/\/[^)]+)\)/);
+      if (markdownMatch) return markdownMatch[1];
+
+      const urlMatch = rawValue.match(/https?:\/\/[^\s)]+/);
+      return urlMatch ? urlMatch[0] : "";
+    },
+    recordPreviewShareImage(record) {
+      return this.normalizeImageUrl(
+        record?.share_card_image ||
+        record?.share_image_url ||
+        record?.share_card_url ||
+        record?.latest_share_card?.image_url ||
+        record?.share_card?.image_url
+      );
+    },
+    recordPreviewImage(record) {
+      return this.recordPreviewCandidates(record)[0] || "";
+    },
+    recordPreviewCandidates(record) {
+      const canvasData = record?.canvas_data || {};
+      return [
+        this.recordPreviewShareImage(record),
+        canvasData.main_image_src,
+        record?.work_poster,
+        record?.work?.poster_image,
+        record?.work?.cover_image,
+        record?.poster,
+        record?.image,
+      ]
+        .map((value) => this.normalizeImageUrl(value))
+        .filter(Boolean)
+        .filter((value, index, list) => list.indexOf(value) === index);
+    },
+    currentRecordPreviewImage(record) {
+      if (this.brokenRecordPreviewImages[record.id]) return "";
+      const candidates = this.recordPreviewCandidates(record);
+      const index = this.recordPreviewCandidateIndexes[record.id] || 0;
+      return candidates[index] || "";
+    },
+    handleRecordPreviewImageError(record) {
+      const candidates = this.recordPreviewCandidates(record);
+      const currentIndex = this.recordPreviewCandidateIndexes[record.id] || 0;
+      const nextIndex = currentIndex + 1;
+      if (nextIndex < candidates.length) {
+        this.recordPreviewCandidateIndexes = {
+          ...this.recordPreviewCandidateIndexes,
+          [record.id]: nextIndex,
+        };
+        return;
+      }
+      this.brokenRecordPreviewImages = {
+        ...this.brokenRecordPreviewImages,
+        [record.id]: true,
+      };
+    },
+    recordPreviewClass(record) {
+      if (this.recordPreviewShareImage(record)) return "record-preview--share";
+      const canvasData = record?.canvas_data || {};
+      if ((Array.isArray(canvasData.placed_items) && canvasData.placed_items.length > 0) || canvasData.main_image_src) {
+        return "record-preview--diary";
+      }
+      if (this.recordPreviewCandidates(record).length > 0) return "record-preview--poster";
+      return "record-preview--empty";
+    },
+    isPlaceholderTitle(value) {
+      const title = String(value || "").trim();
+      return !title || title === "제목 없는 기록";
+    },
+    recordDisplayTitle(record) {
+      const candidates = [
+        record?.work_title,
+        record?.work?.title_ko,
+        record?.work?.title,
+        record?.anime_title,
+        record?.display_title,
+        record?.title,
+        record?.canvas_data?.title,
+      ];
+      const title = candidates.find((value) => !this.isPlaceholderTitle(value));
+      return title || "제목 없는 기록";
+    },
+    recordPreviewText(record) {
+      const source = record?.content || record?.memo || record?.canvas_data?.analysis?.phrase || record?.work_title || "기록의 분위기를 담은 미리보기입니다.";
+      return String(source).replace(/\s+/g, " ").trim();
+    },
     canvasSnapshot() {
       return {
         placedItems: this.cloneForSave(this.placedItems),
@@ -1495,15 +1611,27 @@ export default {
     apiRecordToSavedCard(record) {
       const cd = record.canvas_data || {};
       const placedItems = cd.placed_items || [];
-      const title = (cd.title || "").trim() || record.work_title || record.anime_title || "제목 없는 기록";
+      const title = this.recordDisplayTitle(record);
       const watchedDate = record.watched_date
         ? record.watched_date.replaceAll("-", ".")
         : "";
+      const imageCandidates = [
+        record.work_poster,
+        record.work?.poster_image,
+        record.work?.cover_image,
+      ]
+        .map((value) => this.normalizeImageUrl(value))
+        .filter(Boolean)
+        .filter((value, index, list) => list.indexOf(value) === index);
+      const imageSrc = imageCandidates[0] || "";
+
       return {
         id: record.id,
         title,
         date: watchedDate,
         rating: record.rating ?? 0,
+        imageSrc,
+        imageCandidates,
         workId: record.work?.id || record.work || null,
         visibility: record.visibility || "private",
         memoCount: placedItems.filter((i) => i.type === "text").length,
@@ -1516,9 +1644,10 @@ export default {
             rating: record.rating ?? 0,
             memo: record.content || "",
             tags: [],
+            workId: record.work?.id || record.work || null,
           },
           placedItems,
-          mainImageSrc: cd.main_image_src || "",
+          mainImageSrc: this.normalizeImageUrl(cd.main_image_src),
           analysis: cd.analysis || null,
         },
       };
@@ -1542,6 +1671,8 @@ export default {
       try {
         const data = await this.apiFetch("/api/records/");
         const results = Array.isArray(data) ? data : (data.results || []);
+        this.recordPreviewCandidateIndexes = {};
+        this.brokenRecordPreviewImages = {};
         this.feedRecords = results;
       } catch (error) {
         console.error("피드 불러오기 실패:", error);
@@ -1593,6 +1724,7 @@ export default {
         const payload = {
           ...(this.recordForm.workId ? { work_id: this.recordForm.workId } : {}),
           title: this.recordTitle.trim() || animeTitle,
+          work_title: animeTitle,
           anime_title: animeTitle,
           rating: this.currentRecord.rating ?? null,
           watched_date: this.formatInputDate(this.currentRecord.date) || null,
