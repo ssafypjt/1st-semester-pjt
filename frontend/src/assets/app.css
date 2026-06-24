@@ -2076,6 +2076,29 @@ button {
   gap: 9px;
 }
 
+.content-textarea {
+  width: 100%;
+  min-height: 100px;
+  padding: 12px;
+  border: 1.5px solid #e6dced;
+  border-radius: 10px;
+  background: #faf8fc;
+  color: #3a2f4a;
+  font-size: 13.5px;
+  font-family: inherit;
+  line-height: 1.6;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.content-textarea:focus {
+  border-color: #b49cd8;
+  background: #fff;
+}
+.content-textarea::placeholder {
+  color: #baadc8;
+}
+
 .lower-grid {
   display: grid;
   grid-template-columns: 1.25fr 1fr 1fr;

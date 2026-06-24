@@ -303,12 +303,15 @@
 
             <section class="panel-card">
               <header>
-                <h3>추천 키워드</h3>
-                <span>AI 추천</span>
+                <h3>감상평</h3>
+                <span>메모</span>
               </header>
-              <div class="keyword-list">
-                <button v-for="tag in ai.tags" :key="tag" type="button">#{{ tag }}</button>
-              </div>
+              <textarea
+                class="content-textarea"
+                v-model="currentRecord.memo"
+                placeholder="작품에 대한 감상평을 자유롭게 작성하세요..."
+                rows="5"
+              ></textarea>
             </section>
           </aside>
         </div>
@@ -1495,13 +1498,24 @@ export default {
     apiRecordToSavedCard(record) {
       const cd = record.canvas_data || {};
       const placedItems = cd.placed_items || [];
-      const title = (cd.title || "").trim() || record.work_title || record.anime_title || "제목 없는 기록";
+      // recordTitle: 에디터에서 입력한 레코드별 제목 (다이어리 상단)
+      const recordTitle = (cd.title || "").trim();
+      // animeTitle: 애니 제목 (다이어리 내부 표시용)
+      //   우선순위: canvas_data.anime_title > work 정보 > 레코드 title 폴백
+      const workTitle = record.work?.title_ko || record.work?.title || "";
+      const animeTitle = (cd.anime_title || "").trim()
+        || workTitle
+        || (record.work_title || "").trim()
+        || (record.display_title || "").trim()
+        || record.title
+        || "제목 없는 기록";
       const watchedDate = record.watched_date
         ? record.watched_date.replaceAll("-", ".")
         : "";
       return {
         id: record.id,
-        title,
+        title: animeTitle,              // 애니 제목 (currentRecord.title = 다이어리 내부)
+        recordTitle: recordTitle,       // 레코드 제목 (다이어리 상단 input)
         date: watchedDate,
         rating: record.rating ?? 0,
         workId: record.work?.id || record.work || null,
@@ -1511,7 +1525,7 @@ export default {
         savedAt: record.created_at,
         snapshot: {
           record: {
-            title,
+            title: animeTitle,
             date: watchedDate,
             rating: record.rating ?? 0,
             memo: record.content || "",
@@ -1589,16 +1603,19 @@ export default {
       this.isSaving = true;
 
       try {
-        const animeTitle = (this.currentRecord.title || this.recordForm.title || "").trim() || "제목 없는 기록";
+        // 애니 제목: work에서 가져온 것 (recordForm.title). currentRecord.title과 분리.
+        const animeTitle = (this.recordForm.title || "").trim();
+        // 레코드 제목: 사용자가 에디터에서 입력한 제목
+        const recTitle = this.recordTitle.trim() || animeTitle || "제목 없는 기록";
         const payload = {
           ...(this.recordForm.workId ? { work_id: this.recordForm.workId } : {}),
-          title: this.recordTitle.trim() || animeTitle,
-          anime_title: animeTitle,
+          title: recTitle,
           rating: this.currentRecord.rating ?? null,
           watched_date: this.formatInputDate(this.currentRecord.date) || null,
           content: this.currentRecord.memo || "",
           canvas_data: {
             title: this.recordTitle,
+            anime_title: this.currentRecord.title || animeTitle,
             placed_items: this.cloneForSave(this.placedItems),
             main_image_src: this.mainImageSrc,
             analysis: this.cloneForSave(this.ai),
@@ -1656,7 +1673,7 @@ export default {
       this.selectedDecorationId = null;
       this.currentRecordId = card.id;  // 수정 모드 — 저장 시 PATCH
       this.recordVisibility = card.visibility || "private";
-      this.recordTitle = card.recordTitle || card.title || "";
+      this.recordTitle = card.recordTitle || "";
       this.activePage = "기록 작성";
       this.toastMessage = "";
       this.undoHistory = [];
