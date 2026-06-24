@@ -78,6 +78,11 @@
         :active-page="activePage"
         :recent-tags="recentTags"
         :nav-icon="navIcon"
+        :my-page-icon-url="myPageIconUrl"
+        :review-icon-url="reviewIconUrl"
+        :add-record-icon-url="addRecordIconUrl"
+        :album-icon-url="albumIconUrl"
+        :home-icon-url="homeIconUrl"
         :has-record-in-progress="hasRecordInProgress"
         @navigate="navigatePage"
       />
@@ -129,7 +134,23 @@
                 <button class="tool-action memo-action" type="button" title="메모 추가" @click="addTextMemo">
                   <span>T</span><b>메모 추가</b>
                 </button>
-                <!-- 공개/비공개 선택 제거됨 -->
+                <fieldset class="visibility-toggle" aria-label="공개 설정">
+                  <legend>공개 설정</legend>
+                  <label :class="{ active: recordVisibility === 'public' }">
+                    <input type="radio" value="public" v-model="recordVisibility" />
+                    <span>
+                      <b>공개</b>
+                      <small>홈 피드에 다른 사용자도 볼 수 있어요</small>
+                    </span>
+                  </label>
+                  <label :class="{ active: recordVisibility === 'private' }">
+                    <input type="radio" value="private" v-model="recordVisibility" />
+                    <span>
+                      <b>비공개</b>
+                      <small>내 앨범에서만 볼 수 있어요</small>
+                    </span>
+                  </label>
+                </fieldset>
                 <button class="primary small tool-action save-action" type="button" title="저장" @click="saveCard">
                   <span class="save-icon"></span><b>저장</b>
                 </button>
@@ -328,7 +349,11 @@
 
         <section v-else class="detail-page">
           <header>
-            <span>{{ navIcon(activePage) }}</span>
+            <img v-if="activePage === nav[4]" class="detail-page-icon-image" :src="myPageIconUrl" alt="" />
+            <img v-else-if="activePage === nav[3]" class="detail-page-icon-image" :src="reviewIconUrl" alt="" />
+            <img v-else-if="activePage === nav[1]" class="detail-page-icon-image" :src="albumIconUrl" alt="" />
+            <img v-else-if="activePage === nav[0]" class="detail-page-icon-image" :src="homeIconUrl" alt="" />
+            <span v-else>{{ navIcon(activePage) }}</span>
             <div>
               <h2>{{ activePage }}</h2>
               <p>{{ pageDescription }}</p>
@@ -606,6 +631,12 @@
 <script>
 import simpleLogoUrl from "./assets/images/simple_logo.png";
 import mainLogoUrl from "./assets/images/main-logo.png";
+import basicProfileUrl from "./assets/images/basic_profile.png";
+import myPageIconUrl from "./assets/images/my_page_icon.png";
+import reviewIconUrl from "./assets/images/card_icon.png";
+import addRecordIconUrl from "./assets/images/add_record_icon.png";
+import albumIconUrl from "./assets/images/album_icon.png";
+import homeIconUrl from "./assets/images/home_icon.png";
 import SavedAlbumGrid from "./components/album/SavedAlbumGrid.vue";
 import Sidebar from "./components/layout/Sidebar.vue";
 import Topbar from "./components/layout/Topbar.vue";
@@ -638,6 +669,12 @@ export default {
     return {
       simpleLogoUrl,
       mainLogoUrl,
+      basicProfileUrl,
+      myPageIconUrl,
+      reviewIconUrl,
+      addRecordIconUrl,
+      albumIconUrl,
+      homeIconUrl,
       query: "",
       activePage: localStorage.getItem("deokkku:activePage") || "내 앨범",
       _dirty: false,
@@ -670,7 +707,7 @@ export default {
       previewRecord: {},
       previewPlacedItems: [],
       previewMainImageSrc: "",
-      recordVisibility: "private",
+      recordVisibility: "public",
       recordTitle: "",
       bubblePresetColors: ['#ffffff', '#fff5f5', '#fff8e1', '#e8f5e9', '#e3f2fd', '#f3e5f5', '#fce4ec', '#ede7f6'],
       bubblePresetBorders: ['#b49cd8', '#e57373', '#ffb74d', '#81c784', '#64b5f6', '#ba68c8', '#f06292', '#333333'],
@@ -760,7 +797,7 @@ export default {
       return this.shareCards.length > 0 ? this.shareCards[0] : null;
     },
     profilePreviewUrl() {
-      return this.profilePreviewLocalUrl || this.currentUser?.profile_image || "";
+      return this.profilePreviewLocalUrl || this.currentUser?.profile_image || this.basicProfileUrl;
     },
     profileInitial() {
       const source = this.currentUser?.nickname || this.currentUser?.email || "?";
@@ -1830,7 +1867,7 @@ export default {
       if (this.recordModalMode !== "edit") {
         // 신규 기록이면 백엔드 ID 초기화 (저장 시 POST)
         this.currentRecordId = null;
-        this.recordVisibility = "private";
+        this.recordVisibility = "public";
         this.recordTitle = "";
         this.placedItems = [];
         this.mainImageSrc = "";

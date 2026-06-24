@@ -2,7 +2,7 @@
   <header class="topbar">
     <label class="search">
       <input :value="query" placeholder="애니 제목, 캐릭터, 태그로 검색해보세요" @input="$emit('update:query', $event.target.value)" />
-      <span>⌕</span>
+      <img class="search-icon-image" :src="searchIconUrl" alt="" />
     </label>
     <div class="top-actions">
       <button class="primary" type="button" @click="$emit('open-record')">＋ 새 기록</button>
@@ -11,7 +11,7 @@
       </button>
       <div class="profile-menu-wrap" ref="profileMenu">
         <button class="avatar" type="button" title="Profile" @click.stop="$emit('toggle-profile')">
-          <img v-if="currentUser && currentUser.profile_image" :src="currentUser.profile_image" alt="" />
+          <img :src="profileImageUrl" alt="" />
         </button>
         <profile-dropdown
           v-if="showProfileMenu"
@@ -29,6 +29,8 @@
 <script>
 import ProfileDropdown from "../profile/ProfileDropdown.vue";
 import notificationIconUrl from "../../assets/images/notification_icon.png";
+import searchIconUrl from "../../assets/images/search_icon.png";
+import basicProfileUrl from "../../assets/images/basic_profile.png";
 
 export default {
   name: "Topbar",
@@ -38,6 +40,8 @@ export default {
   data() {
     return {
       notificationIconUrl,
+      searchIconUrl,
+      basicProfileUrl,
     };
   },
   props: {
@@ -63,6 +67,11 @@ export default {
     },
   },
   emits: ["update:query", "open-record", "toggle-profile", "view-profile", "logout"],
+  computed: {
+    profileImageUrl() {
+      return this.currentUser?.profile_image || this.basicProfileUrl;
+    },
+  },
   methods: {
     contains(target) {
       return this.$refs.profileMenu?.contains(target) || false;

@@ -2,8 +2,7 @@
   <section class="profile-dropdown" role="menu">
     <div class="profile-dropdown-head">
       <div class="profile-dropdown-avatar">
-        <img v-if="currentUser && currentUser.profile_image" :src="currentUser.profile_image" alt="" />
-        <span v-else>{{ profileInitial }}</span>
+        <img :src="profileImageUrl" alt="" />
       </div>
       <div>
         <b>{{ currentUser?.nickname || '내 프로필' }}</b>
@@ -19,8 +18,15 @@
 </template>
 
 <script>
+import basicProfileUrl from "../../assets/images/basic_profile.png";
+
 export default {
   name: "ProfileDropdown",
+  data() {
+    return {
+      basicProfileUrl,
+    };
+  },
   props: {
     currentUser: {
       type: Object,
@@ -36,5 +42,10 @@ export default {
     },
   },
   emits: ["view-profile", "logout"],
+  computed: {
+    profileImageUrl() {
+      return this.currentUser?.profile_image || this.basicProfileUrl;
+    },
+  },
 };
 </script>
