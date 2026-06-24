@@ -1,14 +1,10 @@
 """
-GMS AI 서비스 클라이언트.
+GMS AI 서비스 클라이언트 — 2단계 파이프라인.
 
-GMS(제공되는 AI 게이트웨이)를 통해 GPT / Gemini 등을 호출하여
-공유 카드 레이아웃 JSON을 생성한다.
+Stage 1: 콘텐츠 생성 AI — 메모·말풍선·감상평을 종합하여 카드 텍스트 생성
+Stage 2: 배치 AI — 작품 정보 + Stage 1 결과로 최종 카드 데이터 JSON 생성
 
-Quick Example 기반 curl 구조:
-    curl -X POST <GMS_API_URL> \
-         -H "Authorization: Bearer <GMS_API_KEY>" \
-         -H "Content-Type: application/json" \
-         -d '{"model": "...", "messages": [...]}'
+GMS 게이트웨이를 통해 gpt-5-mini를 호출한다.
 """
 import json
 import logging
@@ -26,8 +22,7 @@ class GMSClient:
         self.api_url = getattr(settings, 'GMS_API_URL',
                                'https://gms.ssafy.io/gmsapi/api.openai.com/v1/chat/completions')
         self.api_key = getattr(settings, 'GMS_API_KEY', '')
-        ## 모델 바꾸는 곳
-        self.model = getattr(settings, 'GMS_MODEL', 'gpt-4.1-mini')
+        self.model = getattr(settings, 'GMS_MODEL', 'gpt-5-mini')
         self.timeout = getattr(settings, 'GMS_TIMEOUT', 30)
 
     def _headers(self):
@@ -37,29 +32,17 @@ class GMSClient:
         }
 
     def chat_completion(self, messages: list[dict], **kwargs) -> dict:
-        """GMS chat completion API 호출.
-
-        Args:
-            messages: [{"role": "system"|"user", "content": "..."}]
-            **kwargs: temperature, max_completion_tokens 등 추가 파라미터
-
-        Returns:
-            전체 API 응답 dict
-
-        Raises:
-            GMSError: API 호출 실패 시
-        """
+        """GMS chat completion API 호출."""
         if not self.api_url or not self.api_key:
             raise GMSError('GMS_API_URL 또는 GMS_API_KEY가 설정되지 않았습니다.')
 
         payload = {
             'model': kwargs.get('model', self.model),
             'messages': messages,
-            'temperature': kwargs.get('temperature', 0.7),
-            'max_tokens': kwargs.get('max_tokens', 1024),
+            'temperature': kwargs.get('temperature', 1),
+            'max_completion_tokens': kwargs.get('max_completion_tokens', 1024),
         }
 
-        # JSON 응답을 강제하기 위한 response_format (지원되는 모델에 한해)
         if kwargs.get('json_mode', True):
             payload['response_format'] = {'type': 'json_object'}
 
@@ -81,45 +64,51 @@ class GMSClient:
             logger.error('GMS API 요청 실패: %s', e)
             raise GMSError(f'GMS API 연결 실패: {e}')
 
-    def generate_card_layout(self, prompt: str, **kwargs) -> dict:
-        """공유 카드 레이아웃 JSON을 생성한다.
-
-        Args:
-            prompt: 조립된 최종 프롬프트 (시스템 + 유저 메시지)
-
-        Returns:
-            AI가 생성한 레이아웃 JSON (dict)
-        """
+    def _call_json(self, developer_prompt: str, user_prompt: str,
+                   **kwargs) -> dict:
+        """developer + user 메시지로 JSON 응답을 받아 파싱한다."""
         messages = [
-            {
-                'role': 'system',
-                'content': SYSTEM_PROMPT,
-            },
-            {
-                'role': 'user',
-                'content': prompt,
-            },
+            {'role': 'developer', 'content': developer_prompt},
+            {'role': 'user', 'content': user_prompt},
         ]
-
         response = self.chat_completion(messages, **kwargs)
 
-        # 응답에서 content 추출
         try:
             content = response['choices'][0]['message']['content']
-            layout = json.loads(content)
+            result = json.loads(content)
         except (KeyError, IndexError, json.JSONDecodeError) as e:
             logger.error('AI 응답 파싱 실패: %s — 원본: %s', e, response)
             raise GMSError(f'AI 응답 파싱 실패: {e}')
 
-        # 토큰 사용량 메타데이터
+        # 토큰 사용량
         usage = response.get('usage', {})
-        layout['_meta'] = {
+        result['_meta'] = {
             'model': response.get('model', self.model),
             'prompt_tokens': usage.get('prompt_tokens', 0),
             'completion_tokens': usage.get('completion_tokens', 0),
         }
+        return result
 
-        return layout
+    # ─── Stage 1: 콘텐츠 생성 ────────────────────────────
+
+    def generate_content(self, prompt: str, **kwargs) -> dict:
+        """Stage 1 — 메모·말풍선·감상평을 종합하여 카드 텍스트를 생성한다.
+
+        Returns:
+            {"quote": "...", "memo_text": "...", "_meta": {...}}
+        """
+        return self._call_json(STAGE1_PROMPT, prompt, **kwargs)
+
+    # ─── Stage 2: 카드 데이터 생성 ───────────────────────
+
+    def generate_card_layout(self, prompt: str, **kwargs) -> dict:
+        """Stage 2 — 작품 정보 + Stage 1 결과로 최종 카드 데이터를 생성한다.
+
+        Returns:
+            {"mood": "...", "quote": "...", "memo_text": "...",
+             "tags": [...], "title_ko": "...", "title_en": "...", "_meta": {...}}
+        """
+        return self._call_json(STAGE2_PROMPT, prompt, **kwargs)
 
 
 class GMSError(Exception):
@@ -127,91 +116,48 @@ class GMSError(Exception):
     pass
 
 
-# ─── 시스템 프롬프트 ────────────────────────────────────
-SYSTEM_PROMPT = """\
-너는 공유 카드 레이아웃 디자이너 AI야.
-사용자의 감상 기록을 받아서 **사용자 이미지 중심** 스크랩북 스타일의 레이아웃 JSON을 생성해.
-
-## 핵심 디자인 철학
-사용자가 업로드한 이미지(is_main_image: true)가 카드의 **주인공**이다.
-종이 배경, 테이프, 스티커, 메모지는 그 이미지를 **꾸며주는 역할**.
-포스터(작품 커버)는 작은 폴라로이드로 곁들이는 **보조 요소**.
+# ═════════════════════════════════════════════════════════
+#  Stage 1 — 콘텐츠 생성 프롬프트
+# ═════════════════════════════════════════════════════════
+STAGE1_PROMPT = """\
+너는 애니메이션 감상 카드의 텍스트 라이터야.
+사용자의 다이어리 데이터(감상평, 메모, 말풍선 텍스트)를 받아서
+공유 카드에 넣을 텍스트를 생성해.
 
 ## 규칙
-1. 반드시 JSON 형식으로만 응답해. 다른 텍스트는 절대 포함하지 마.
-2. 카드 크기: 1080×1920px (인스타 스토리 비율).
-3. 모든 좌표는 px 단위, 좌상단(0,0) 기준.
-4. 각 존의 y 범위를 반드시 지켜.
-5. 감상문 20자 이하면 원문 그대로, 초과면 핵심 1~2문장 발췌.
+1. 반드시 JSON 형식으로만 응답해.
+2. quote: 감상의 핵심을 담은 한 줄 (30자 내). 임팩트 있게.
+3. memo_text: 감상 내용을 3문장 이내로 정리. 메모·말풍선·감상평을 종합.
+4. 입력이 부족하면 작품명과 분위기에 맞게 적절히 생성해.
 
-## 존 구조 (v4)
-- Zone 1 — 헤더: y 0~140
-- Zone 2 — 메인 이미지 + 포스터: y 140~1200 (사용자 이미지가 주인공)
-- Zone 3 — 메모: y 1200~1560
-- Zone 4 — 정보: y 1560~1920
-
-## 응답 JSON 스키마
+## 응답 JSON
 {
-  "template_id": <선택된 템플릿 ID>,
-  "background": { "color": "#hex", "overlay_opacity": 0.0~1.0 },
-  "header": { "date": "YYYY.MM.DD", "text_color": "#hex" },
-  "collage": {
-    "poster": {
-      "x": 숫자, "y": 숫자, "width": 160~320, "height": 숫자,
-      "frame": "polaroid"
-    },
-    "label": "포스터 아래 작품명 (선택)",
-    "label_color": "#hex"
-  },
-  "stickers": [
-    {
-      "index": 0,
-      "x": 숫자, "y": 숫자,
-      "width": 숫자, "height": 숫자,
-      "rotation": -15~15,
-      "font_size": 16~28 (말풍선만)
-    }
-  ],
-  "memo": {
-    "text": "감상문 (원문 또는 발췌)",
-    "x": 숫자, "y": 1220~1280, "width": 숫자, "height": 숫자,
-    "bg_color": "#hex", "text_color": "#hex",
-    "border_color": "#hex 또는 null", "font_size": 24~34
-  },
-  "info": {
-    "title": "작품 제목",
-    "rating": "9.5 / 10",
-    "tags": ["태그1", "태그2"],
-    "text_color": "#hex", "accent_color": "#hex", "tag_color": "#hex"
-  },
-  "mood": "분위기 키워드"
+  "quote": "한 줄 인용문 (30자 내)",
+  "memo_text": "메모 영역 텍스트 (3문장 내)"
 }
+"""
 
-## stickers 배치 규칙
-- index는 입력 stickers 배열의 순서 (0부터).
-- **모든 y좌표 ≥ 140** (헤더 침범 금지).
-- 다이어리 원본 x_pct, y_pct 상대 위치를 카드 크기에 맞게 반영.
+# ═════════════════════════════════════════════════════════
+#  Stage 2 — 카드 배치 프롬프트
+# ═════════════════════════════════════════════════════════
+STAGE2_PROMPT = """\
+너는 애니메이션 감상 카드 배치 AI야.
+작품 정보와 생성된 텍스트를 받아서 최종 카드 데이터 JSON을 만들어.
 
-### ★ 메인 이미지 (is_main_image: true) — 카드의 주인공
-- Zone 2(y: 140~1200) 전체를 **최대한 크게** 차지하도록 배치 (최소 width 600, height 500).
-- 여러 장이면 Zone 2를 나눠서 각각 크게.
-- 다이어리 상대 위치 반영 (왼쪽에 있던 건 카드 왼쪽).
-- 메인 이미지끼리 겹치지 않게.
+## 규칙
+1. 반드시 JSON 형식으로만 응답해.
+2. 좌표·크기·색상은 지정하지 마. 렌더러가 처리한다.
+3. mood: 작품 장르·감상 분위기에 맞는 한 단어.
+4. tags: 작품 장르·태그를 한글로 5개 이내 (Action → 액션).
+5. quote, memo_text는 Stage 1 결과를 그대로 사용하되, 필요시 다듬어.
 
-### 포스터 (collage.poster) — 보조 요소
-- width는 160~320px으로 작게. 메인 이미지를 가리지 않는 빈 구석에 배치.
-- 폴라로이드 프레임 고정.
-
-### 일반 스티커 / 이미지 스티커 — 꾸미기 요소
-- 아이콘: 60~100px, 이미지 스티커: 100~200px.
-- 다이어리 원본 위치 참고.
-- 메인 이미지 중심 70% 보호 영역에는 배치 금지. 가장자리 30%만 가능.
-- rotation: -15~15도 (스크랩북 느낌).
-- 메모지 테두리와 10~20% 겹쳐도 됨 (Z-order가 높아서 위에 그려짐).
-
-### 말풍선 (type: "bubble")
-- 텍스트가 **절대 잘리지 않도록** 충분한 크기 확보.
-- 한글 1글자 ≈ width 28px, height 34px. 최소 width 160px, height 80px.
-- font_size 반드시 포함 (16~28).
-- 메모지 테두리와 겹쳐도 됨. 스티커는 메모지 위에 렌더링됨.
+## 응답 JSON
+{
+  "mood": "분위기 한 단어 (다크/귀여운/차가운/따뜻한/몽환적/열정적)",
+  "quote": "한 줄 인용문 (30자 내)",
+  "memo_text": "메모 영역 텍스트 (3문장 내)",
+  "tags": ["태그1", "태그2", ...],
+  "title_ko": "한국어 제목",
+  "title_en": "ENGLISH TITLE"
+}
 """

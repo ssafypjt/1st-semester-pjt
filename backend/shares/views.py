@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from django.conf import settings
 from records.models import Record, RecordImage
 from .models import CardTemplate, ShareCard
-from .prompts import build_card_prompt
+from .prompts import build_content_prompt, build_card_prompt
 from .renderer import render_card
 from .serializers import (CardTemplateSerializer, ShareCardCreateSerializer,
                           ShareCardSerializer)
@@ -56,15 +56,16 @@ def _resolve_image_path(url: str) -> str | None:
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def generate_share_card(request, record_id):
-    """공유 카드 생성.
+    """공유 카드 생성 — 2단계 AI 파이프라인.
 
     POST /api/shares/<record_id>/generate/
 
     1. Record 조회 (본인 기록만)
-    2. 활성 템플릿 목록 조회
-    3. AI에게 프롬프트 전송 → 레이아웃 JSON 수신
-    4. Pillow로 이미지 렌더링
-    5. ShareCard 저장 후 반환
+    2. 다이어리 데이터 추출 (메모 + 말풍선 + 감상평)
+    3. Stage 1: 콘텐츠 생성 AI (텍스트 요약/생성)
+    4. Stage 2: 배치 AI (mood·tags·제목 결정)
+    5. Pillow로 이미지 렌더링
+    6. ShareCard 저장 후 반환
     """
     # 1) 본인 기록 조회
     record = get_object_or_404(
@@ -73,23 +74,7 @@ def generate_share_card(request, record_id):
         user=request.user,
     )
 
-    # 요청 데이터 검증
-    serializer = ShareCardCreateSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-    template_id = serializer.validated_data.get('template_id')
-
-    # 2) 사용 가능한 템플릿 목록
-    templates = CardTemplate.objects.filter(is_active=True)
-    if template_id:
-        templates = templates.filter(pk=template_id)
-
-    if not templates.exists():
-        return Response(
-            {'detail': '사용 가능한 카드 템플릿이 없습니다.'},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    # 2-b) 사용자 다이어리 스티커 (canvas_data.placedItems)
+    # 2) 사용자 다이어리 데이터 추출
     canvas_data = record.canvas_data or {}
     placed_items = (
         canvas_data.get('placed_items')
@@ -97,12 +82,19 @@ def generate_share_card(request, record_id):
         or []
     ) if isinstance(canvas_data, dict) else []
 
-    # 3) AI 프롬프트 조립 & 호출
-    prompt = build_card_prompt(record, templates, placed_items=placed_items)
-
     try:
         client = GMSClient()
-        layout_data = client.generate_card_layout(prompt)
+
+        # 3) Stage 1 — 콘텐츠 생성 (메모·말풍선·감상평 종합)
+        content_prompt = build_content_prompt(record, placed_items=placed_items)
+        stage1_result = client.generate_content(content_prompt)
+        stage1_meta = stage1_result.pop('_meta', {})
+
+        # 4) Stage 2 — 배치 (작품 정보 + Stage 1 결과 → 최종 카드 데이터)
+        card_prompt = build_card_prompt(record, stage1_result,
+                                        placed_items=placed_items)
+        layout_data = client.generate_card_layout(card_prompt)
+
     except GMSError as e:
         logger.error('공유 카드 AI 생성 실패 (record=%s): %s', record_id, e)
         return Response(
@@ -110,38 +102,42 @@ def generate_share_card(request, record_id):
             status=status.HTTP_502_BAD_GATEWAY,
         )
 
-    # 메타데이터 분리
+    # 메타데이터 분리 (Stage 2 기준, Stage 1 토큰도 합산)
     meta = layout_data.pop('_meta', {})
+    meta['prompt_tokens'] = (meta.get('prompt_tokens', 0)
+                             + stage1_meta.get('prompt_tokens', 0))
+    meta['completion_tokens'] = (meta.get('completion_tokens', 0)
+                                 + stage1_meta.get('completion_tokens', 0))
 
-    # 선택된 템플릿 찾기
-    selected_template_id = layout_data.get('template_id')
-    template = None
-    if selected_template_id:
-        template = CardTemplate.objects.filter(
-            pk=selected_template_id, is_active=True
-        ).first()
+    # 날짜 보강
+    if record.watched_date and not layout_data.get('date'):
+        layout_data['date'] = str(record.watched_date).replace('-', '.')
+
+    # 레이팅 보강
+    if record.rating and not layout_data.get('rating'):
+        layout_data['rating'] = f'{record.rating} / 10'
 
     # 4) 이미지 렌더링
     try:
-        background_url = template.background_image if template else ''
         poster_url = (record.work.poster_image if record.work else '') or ''
 
-        # text 메모를 제외한 모든 스티커/말풍선/이미지 아이템
-        # 상대 URL → 로컬 파일 경로로 변환
+        # sticker_items: 메인 이미지용 / deco_stickers: 장식 스티커용
         sticker_items = []
-        sticker_idx = 0
+        deco_stickers = []
         for item in placed_items:
             if item.get('type', 'sticker') in ('text',):
                 continue
-            item = dict(item)  # 복사
-            item['_sticker_index'] = sticker_idx
+            item = dict(item)
             img_src = item.get('imageSrc') or ''
             if img_src:
                 local = _resolve_image_path(img_src)
                 if local:
                     item['_local_path'] = local
-            sticker_items.append(item)
-            sticker_idx += 1
+            # 사용자 업로드 이미지는 메인용, 나머지는 데코용
+            if '/api/records/uploads/' in img_src:
+                sticker_items.append(item)
+            elif img_src:
+                deco_stickers.append(item)
 
         if poster_url and poster_url.startswith('/'):
             local_poster = _resolve_image_path(poster_url)
@@ -151,8 +147,8 @@ def generate_share_card(request, record_id):
         image_buf = render_card(
             layout_data,
             poster_url=poster_url,
-            background_url=background_url,
             stickers=sticker_items,
+            deco_stickers=deco_stickers,
         )
     except Exception as e:
         logger.error('공유 카드 렌더링 실패 (record=%s): %s', record_id, e)
@@ -162,6 +158,7 @@ def generate_share_card(request, record_id):
         )
 
     # 5) ShareCard 저장
+    template = None
     share_card = ShareCard.objects.create(
         record=record,
         template=template,

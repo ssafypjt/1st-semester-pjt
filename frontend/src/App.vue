@@ -303,6 +303,19 @@
 
             <section class="panel-card">
               <header>
+                <h3>감상평</h3>
+                <span>메모</span>
+              </header>
+              <textarea
+                class="content-textarea"
+                v-model="currentRecord.memo"
+                placeholder="작품에 대한 감상평을 자유롭게 작성하세요..."
+                rows="5"
+              ></textarea>
+            </section>
+
+            <section class="panel-card">
+              <header>
                 <h3>추천 키워드</h3>
                 <span>AI 추천</span>
               </header>
@@ -1611,7 +1624,11 @@ export default {
     apiRecordToSavedCard(record) {
       const cd = record.canvas_data || {};
       const placedItems = cd.placed_items || [];
-      const title = this.recordDisplayTitle(record);
+      const recordTitle = (cd.title || "").trim();
+      const workTitle = record.work?.title_ko || record.work?.title || "";
+      const title = (cd.anime_title || "").trim()
+        || workTitle
+        || this.recordDisplayTitle(record);
       const watchedDate = record.watched_date
         ? record.watched_date.replaceAll("-", ".")
         : "";
@@ -1628,6 +1645,7 @@ export default {
       return {
         id: record.id,
         title,
+        recordTitle,
         date: watchedDate,
         rating: record.rating ?? 0,
         imageSrc,
@@ -1731,6 +1749,7 @@ export default {
           content: this.currentRecord.memo || "",
           canvas_data: {
             title: this.recordTitle,
+            anime_title: animeTitle,
             placed_items: this.cloneForSave(this.placedItems),
             main_image_src: this.mainImageSrc,
             analysis: this.cloneForSave(this.ai),

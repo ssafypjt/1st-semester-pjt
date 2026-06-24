@@ -1,10 +1,24 @@
 """
-공유 카드 이미지 렌더러 v4 — 사용자 이미지 중심 스크랩북.
+공유 카드 이미지 렌더러 v5 — 고정 템플릿 기반.
 
-디자인 철학:
-  사용자가 업로드한 이미지가 **주인공**.
-  종이 배경 · 테이프 · 스티커 · 장식이 이미지를 **꾸며주는** 형태.
-  포스터(작품 커버)는 작은 폴라로이드로 곁들인다.
+레퍼런스 디자인:
+  ┌─────────────────────────┐
+  │ 날짜           덕꾸 로고 │  ← 헤더 (0~130)
+  ├─────────────────────────┤
+  │  ┌──────┐  작품 제목    │
+  │  │ 메인 │  (KO / EN)   │
+  │  │ 이미지│              │  ← 메인 (130~1050)
+  │  │      │  "감상평"     │
+  │  └──────┘              │
+  ├─────────────────────────┤
+  │  ┌── MEMO ──┐ ┌RATING┐ │
+  │  │ 텍스트.. │ │★★★★☆│ │  ← 메모+레이팅 (1050~1520)
+  │  └─────────┘ │ 9.5/10│ │
+  │              └───────┘ │
+  ├─────────────────────────┤
+  │  TAGS  #액션 #성장 ...  │  ← 태그 (1520~1820)
+  │  ANILOG · 푸터          │  ← 푸터 (1820~1920)
+  └─────────────────────────┘
 
 카드 크기: 1080 × 1920 (인스타 스토리 9:16)
 """
@@ -18,15 +32,21 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 logger = logging.getLogger(__name__)
 
-# ─── 카드 기본 사이즈 ────────────────────────────────────
-CARD_WIDTH = 1080
-CARD_HEIGHT = 1920
+# ─── 카드 사이즈 ─────────────────────────────────────────
+CARD_W = 1080
+CARD_H = 1920
 
-# ─── 존 영역 (y_start, y_end) ───────────────────────────
-ZONE_HEADER = (0, 140)
-ZONE_MAIN = (140, 1200)     # 사용자 이미지 + 포스터 영역 (확장)
-ZONE_MEMO = (1200, 1560)
-ZONE_INFO = (1560, 1920)
+# ─── 고정 존 영역 ────────────────────────────────────────
+Y_HEADER = (0, 160)       # 헤더 (날짜 + 로고) — 상단 여유 확보
+Y_MAIN = (160, 960)       # 메인 (이미지 + 제목 + 감상평)
+Y_STICKER = (960, 1080)   # 스티커 스트립 (다이어리 스티커 배치)
+Y_MEMO = (1080, 1500)     # 메모 + 레이팅 — 메인과 간격 좁힘
+Y_TAGS = (1500, 1700)     # 태그
+Y_STICKER2 = (1700, 1820) # 하단 스티커 배치
+Y_FOOTER = (1820, 1920)   # 푸터
+
+# ─── 여백 ────────────────────────────────────────────────
+PAD = 60  # 좌우 여백
 
 # ─── 리소스 경로 ─────────────────────────────────────────
 _FONT_DIR = os.path.join(os.path.dirname(__file__), 'fonts')
@@ -53,72 +73,96 @@ def _load_asset(name: str) -> Image.Image | None:
         return None
 
 
-# ─── 분위기 → 에셋 매핑 ─────────────────────────────────
-MOOD_THEMES = {
+# ─── 테마 ────────────────────────────────────────────────
+THEMES = {
+    'dark': {
+        'bg_color': '#1a1625',
+        'bg_asset': 'bg_dark.png',
+        'card_bg': (30, 25, 45, 255),
+        'card_border': (120, 90, 200, 180),
+        'title_color': '#FFFFFF',
+        'subtitle_color': '#A89BC2',
+        'text_color': '#D0C8E0',
+        'accent': '#A78BFA',
+        'memo_bg': (40, 35, 60, 220),
+        'memo_border': (100, 80, 160, 150),
+        'rating_bg': (50, 40, 75, 230),
+        'tag_bg': (60, 50, 85, 200),
+        'tag_text': '#C8B8E8',
+        'tag_border': (120, 100, 180, 180),
+        'footer_color': '#6B5B8A',
+        'quote_color': '#B8A0D8',
+        'tapes': ['tape_purple.png', 'tape_mint.png'],
+    },
     'warm': {
-        'bg': 'bg_beige_grid.png',
-        'memo': 'memo_cream_grid.png',
+        'bg_color': '#FDF5E6',
+        'bg_asset': 'bg_beige_grid.png',
+        'card_bg': (255, 250, 240, 255),
+        'card_border': (220, 200, 170, 180),
+        'title_color': '#3A2F20',
+        'subtitle_color': '#8B7355',
+        'text_color': '#5D4E37',
+        'accent': '#D97706',
+        'memo_bg': (255, 248, 230, 240),
+        'memo_border': (220, 200, 160, 180),
+        'rating_bg': (245, 235, 210, 240),
+        'tag_bg': (240, 230, 210, 200),
+        'tag_text': '#6B5B3A',
+        'tag_border': (200, 180, 140, 180),
+        'footer_color': '#A09070',
+        'quote_color': '#7B6840',
         'tapes': ['tape_pink.png', 'tape_yellow.png'],
-        'decos': ['deco_flower_pink.png', 'deco_star_gold.png', 'deco_heart_pink.png', 'deco_sparkle.png'],
-        'date_bg': (255, 200, 160, 200),
-        'info_accent': '#D97706',
-        'paper_tint': (255, 250, 240, 240),
     },
     'cool': {
-        'bg': 'bg_lavender_grid.png',
-        'memo': 'memo_purple_grid.png',
+        'bg_color': '#F0EBF8',
+        'bg_asset': 'bg_lavender_grid.png',
+        'card_bg': (240, 235, 255, 255),
+        'card_border': (180, 160, 220, 180),
+        'title_color': '#2D1F4E',
+        'subtitle_color': '#7B68A8',
+        'text_color': '#4A3B6B',
+        'accent': '#7C3AED',
+        'memo_bg': (235, 228, 248, 240),
+        'memo_border': (180, 160, 220, 180),
+        'rating_bg': (228, 220, 245, 240),
+        'tag_bg': (220, 210, 240, 200),
+        'tag_text': '#5A4880',
+        'tag_border': (170, 150, 210, 180),
+        'footer_color': '#9080B0',
+        'quote_color': '#6B58A0',
         'tapes': ['tape_purple.png', 'tape_mint.png'],
-        'decos': ['deco_flower_purple.png', 'deco_star_gold.png', 'deco_sparkle.png', 'deco_sparkle_small.png'],
-        'date_bg': (200, 180, 230, 200),
-        'info_accent': '#7C3AED',
-        'paper_tint': (240, 235, 255, 240),
     },
     'cute': {
-        'bg': 'bg_pink_lines.png',
-        'memo': 'memo_pink_grid.png',
+        'bg_color': '#FFF0F5',
+        'bg_asset': 'bg_pink_lines.png',
+        'card_bg': (255, 240, 245, 255),
+        'card_border': (240, 180, 200, 180),
+        'title_color': '#4A2040',
+        'subtitle_color': '#B06080',
+        'text_color': '#6B4058',
+        'accent': '#EC4899',
+        'memo_bg': (255, 235, 242, 240),
+        'memo_border': (240, 180, 200, 180),
+        'rating_bg': (250, 228, 238, 240),
+        'tag_bg': (245, 215, 230, 200),
+        'tag_text': '#8B4068',
+        'tag_border': (230, 170, 195, 180),
+        'footer_color': '#C090A8',
+        'quote_color': '#A05878',
         'tapes': ['tape_pink.png', 'tape_purple.png'],
-        'decos': ['deco_heart_pink.png', 'deco_heart_red.png', 'deco_flower_pink.png', 'deco_star_small.png'],
-        'date_bg': (255, 180, 200, 200),
-        'info_accent': '#EC4899',
-        'paper_tint': (255, 240, 245, 240),
-    },
-    'dark': {
-        'bg': 'bg_dark.png',
-        'memo': 'memo_purple_grid.png',
-        'tapes': ['tape_purple.png', 'tape_mint.png'],
-        'decos': ['deco_sparkle.png', 'deco_sparkle_small.png', 'deco_star_gold.png'],
-        'date_bg': (80, 70, 110, 200),
-        'info_accent': '#A78BFA',
-        'paper_tint': (60, 55, 80, 220),
     },
 }
 
 
 def _pick_theme(layout_data: dict) -> dict:
     mood = layout_data.get('mood', '').lower()
-    bg = layout_data.get('background', {})
-    bg_color = bg.get('color', '#FDF5E6') if isinstance(bg, dict) else '#FDF5E6'
-
     if any(k in mood for k in ('다크', 'dark', '액션', '어두', '공포', '스릴러')):
-        return MOOD_THEMES['dark']
+        return THEMES['dark']
     if any(k in mood for k in ('귀여', 'cute', '사랑', '로맨스', '분홍', '핑크')):
-        return MOOD_THEMES['cute']
+        return THEMES['cute']
     if any(k in mood for k in ('차가', 'cool', '몽환', '판타지', '보라', '우울')):
-        return MOOD_THEMES['cool']
-
-    try:
-        r, g, b = int(bg_color[1:3], 16), int(bg_color[3:5], 16), int(bg_color[5:7], 16)
-        brightness = (r + g + b) / 3
-        if brightness < 80:
-            return MOOD_THEMES['dark']
-        if r > g and r > b and r > 200:
-            return MOOD_THEMES['cute']
-        if b > r and b > 180:
-            return MOOD_THEMES['cool']
-    except (ValueError, IndexError):
-        pass
-
-    return MOOD_THEMES['warm']
+        return THEMES['cool']
+    return THEMES['warm']
 
 
 # ═════════════════════════════════════════════════════════
@@ -130,11 +174,11 @@ _FONT_MAP = {
 }
 
 
-def _load_font(size: int, weight: str = 'normal') -> ImageFont.FreeTypeFont:
+def _font(size: int, weight: str = 'normal') -> ImageFont.FreeTypeFont:
     font_file = _FONT_MAP.get(weight, _FONT_MAP['normal'])
     font_path = os.path.join(_FONT_DIR, font_file)
     try:
-        return ImageFont.truetype(font_path, size, index=1)
+        return ImageFont.truetype(font_path, size)
     except (IOError, OSError):
         try:
             return ImageFont.load_default(size)
@@ -151,8 +195,7 @@ def _download_image(url: str) -> Image.Image | None:
         return None
     try:
         with urlopen(url, timeout=10) as resp:
-            data = resp.read()
-        return Image.open(io.BytesIO(data)).convert('RGBA')
+            return Image.open(io.BytesIO(resp.read())).convert('RGBA')
     except Exception as e:
         logger.warning('이미지 다운로드 실패: %s — %s', url, e)
         return None
@@ -166,49 +209,55 @@ def _load_local_image(path: str) -> Image.Image | None:
         return None
 
 
-def _wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list[str]:
+def _wrap_text(text: str, font, max_w: int) -> list[str]:
     lines = []
-    for paragraph in text.split('\n'):
-        if not paragraph.strip():
+    for para in text.split('\n'):
+        if not para.strip():
             lines.append('')
             continue
-        current_line = ''
-        for char in paragraph:
-            test = current_line + char
-            bbox = font.getbbox(test)
-            if bbox[2] - bbox[0] <= max_width:
-                current_line = test
+        cur = ''
+        for ch in para:
+            test = cur + ch
+            if font.getbbox(test)[2] - font.getbbox(test)[0] <= max_w:
+                cur = test
             else:
-                if current_line:
-                    lines.append(current_line)
-                current_line = char
-        if current_line:
-            lines.append(current_line)
+                if cur:
+                    lines.append(cur)
+                cur = ch
+        if cur:
+            lines.append(cur)
     return lines or ['']
 
 
-def _draw_text_block(draw, text, x, y, w, font, color='#333333',
-                     align='left', max_lines=None):
+def _draw_text(draw, text, x, y, w, font, color, align='left',
+               max_lines=None, line_h_mult=1.5):
     lines = _wrap_text(text, font, w)
     if max_lines:
         lines = lines[:max_lines]
-    line_h = int(font.size * 1.5)
+    lh = int(font.size * line_h_mult)
     for i, line in enumerate(lines):
-        ly = y + i * line_h
-        if ly + font.size > CARD_HEIGHT:
+        ly = y + i * lh
+        if ly + font.size > CARD_H:
             break
         if align == 'center':
-            bbox = font.getbbox(line)
-            tw = bbox[2] - bbox[0]
+            tw = font.getbbox(line)[2] - font.getbbox(line)[0]
             lx = x + (w - tw) // 2
         elif align == 'right':
-            bbox = font.getbbox(line)
-            tw = bbox[2] - bbox[0]
+            tw = font.getbbox(line)[2] - font.getbbox(line)[0]
             lx = x + w - tw
         else:
             lx = x
         draw.text((lx, ly), line, fill=color, font=font)
-    return len(lines) * line_h
+    return len(lines) * lh
+
+
+def _rounded_rect_img(w, h, radius, fill, border=None, border_w=2):
+    """둥근 사각형 RGBA 이미지 생성."""
+    img = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle([(0, 0), (w - 1, h - 1)], radius=radius,
+                        fill=fill, outline=border, width=border_w)
+    return img
 
 
 # ═════════════════════════════════════════════════════════
@@ -216,56 +265,73 @@ def _draw_text_block(draw, text, x, y, w, font, color='#333333',
 # ═════════════════════════════════════════════════════════
 
 def render_card(layout_data: dict, poster_url: str = '',
-                background_url: str = '', stickers: list = None) -> io.BytesIO:
+                background_url: str = '', stickers: list = None,
+                deco_stickers: list = None) -> io.BytesIO:
+    """
+    고정 템플릿 기반 공유 카드 렌더링.
+
+    layout_data에서 사용하는 필드:
+      - mood: 테마 선택용
+      - quote: AI가 추출한 한 줄 감상 (또는 content 앞부분)
+      - memo_text: 메모 영역 텍스트
+      - title_ko, title_en: 작품 제목
+      - rating: 평점 문자열
+      - tags: 태그 리스트
+      - date: 날짜 문자열
+    """
     stickers = stickers or []
+    deco_stickers = deco_stickers or []
     theme = _pick_theme(layout_data)
 
-    # 스티커를 메인 이미지 vs 장식으로 분리
-    main_images = []
-    deco_stickers = []
+    # ── 메인 이미지 결정 (사용자 업로드 > 포스터) ────────
+    main_img = None
     for s in stickers:
-        if s.get('type') == 'text':
-            continue
-        if _is_main_image(s):
-            main_images.append(s)
+        src = s.get('imageSrc') or ''
+        if '/api/records/uploads/' in src:
+            path = s.get('_local_path', '')
+            main_img = _load_local_image(path) if path else _download_image(src)
+            if main_img:
+                break
+
+    if not main_img:
+        if poster_url and os.path.isfile(poster_url):
+            main_img = _load_local_image(poster_url)
         else:
-            deco_stickers.append(s)
+            main_img = _download_image(poster_url)
 
-    # ── 1) 배경 ─────────────────────────────────────────
-    bg_asset = _load_asset(theme['bg'])
+    # ── 1) 배경 ──────────────────────────────────────────
+    bg_asset = _load_asset(theme.get('bg_asset', ''))
     if bg_asset:
-        canvas = bg_asset.resize((CARD_WIDTH, CARD_HEIGHT), Image.LANCZOS)
+        canvas = bg_asset.resize((CARD_W, CARD_H), Image.LANCZOS)
     else:
-        bg = layout_data.get('background', {})
-        bg_color = bg.get('color', '#FDF5E6') if isinstance(bg, dict) else '#FDF5E6'
-        canvas = Image.new('RGBA', (CARD_WIDTH, CARD_HEIGHT), bg_color)
-
+        canvas = Image.new('RGBA', (CARD_W, CARD_H), theme['bg_color'])
     draw = ImageDraw.Draw(canvas)
 
-    # ── 2) 헤더 ─────────────────────────────────────────
+    # ── 2) 헤더 ──────────────────────────────────────────
     _render_header(canvas, draw, layout_data, theme)
 
-    # ── 3) ★ 사용자 이미지 (주인공) ─────────────────────
-    #    종이 배경 + 이미지 + 테이프로 꾸밈
-    ai_sticker_placements = layout_data.get('stickers', [])
-    _render_hero_images(canvas, draw, main_images, ai_sticker_placements, theme)
+    # ── 3) 메인 영역 (이미지 + 제목 + 감상평) ────────────
+    _render_main(canvas, draw, layout_data, main_img, theme)
 
-    # ── 4) 포스터 (작은 폴라로이드로 곁들이기) ───────────
-    _render_poster_mini(canvas, draw, layout_data, poster_url, theme)
+    # ── 3.5) 스티커 스트립 (메인~메모 사이) ──────────────
+    _render_sticker_strip(canvas, deco_stickers, Y_STICKER, theme)
 
-    # ── 5) 메모 ─────────────────────────────────────────
-    _render_memo(canvas, draw, layout_data, theme)
+    # ── 4) 메모 + 레이팅 ─────────────────────────────────
+    _render_memo_rating(canvas, draw, layout_data, theme)
 
-    # ── 6) 정보 ─────────────────────────────────────────
-    _render_info(canvas, draw, layout_data, theme)
+    # ── 5) 태그 ──────────────────────────────────────────
+    _render_tags(canvas, draw, layout_data, theme)
 
-    # ── 7) 장식 스티커 (말풍선 · 아이콘 등 — 위에 얹기) ─
-    _render_deco_stickers(canvas, deco_stickers, ai_sticker_placements)
+    # ── 5.5) 하단 스티커 스트립 ──────────────────────────
+    _render_sticker_strip(canvas, deco_stickers, Y_STICKER2, theme, offset=3)
 
-    # ── 8) 테마 장식 흩뿌리기 ───────────────────────────
-    _scatter_decorations(canvas, theme, layout_data)
+    # ── 6) 푸터 ──────────────────────────────────────────
+    _render_footer(canvas, draw, theme)
 
-    # ── 최종 출력 ───────────────────────────────────────
+    # ── 7) 장식 ──────────────────────────────────────────
+    _render_decorations(canvas, theme, layout_data)
+
+    # 출력
     final = canvas.convert('RGB')
     buf = io.BytesIO()
     final.save(buf, format='PNG', quality=95)
@@ -273,610 +339,393 @@ def render_card(layout_data: dict, poster_url: str = '',
     return buf
 
 
-def _is_main_image(sticker: dict) -> bool:
-    """사용자가 업로드한 장면/이미지인지 판단."""
-    src = sticker.get('imageSrc') or ''
-    return '/api/records/uploads/' in src
-
-
 # ═════════════════════════════════════════════════════════
-#  Zone 1: 헤더
+#  헤더 (날짜 + 로고)
 # ═════════════════════════════════════════════════════════
 
-def _render_header(canvas, draw, layout_data, theme):
-    header = layout_data.get('header', {})
-    date_text = header.get('date', '')
+def _render_header(canvas, draw, data, theme):
+    date_text = data.get('date', '')
+    header_top = 55  # 상단 경계에서 충분한 여유
 
+    # 날짜 뱃지
     if date_text:
-        font = _load_font(32, 'bold')
-        bbox = font.getbbox(date_text)
+        f = _font(30, 'bold')
+        bbox = f.getbbox(date_text)
         tw = bbox[2] - bbox[0]
-        badge_w = tw + 40
-        badge_h = 52
-        badge = Image.new('RGBA', (badge_w, badge_h), (0, 0, 0, 0))
-        badge_draw = ImageDraw.Draw(badge)
-        badge_draw.rounded_rectangle(
-            [(0, 0), (badge_w - 1, badge_h - 1)],
-            radius=26, fill=theme['date_bg'],
-        )
-        badge_draw.text((20, 10), date_text, fill='#5D4E37', font=font)
-        canvas.paste(badge, (60, 44), badge)
+        badge = _rounded_rect_img(tw + 36, 48, 24, theme['card_bg'], theme['card_border'])
+        canvas.paste(badge, (PAD, header_top), badge)
+        draw.text((PAD + 18, header_top + 8), date_text, fill=theme['title_color'], font=f)
 
+    # 덕꾸 로고 (2.5배 확대)
     logo = _load_local_image(_LOGO_PATH)
     if logo:
-        ratio = 50 / logo.height
-        logo_w = int(logo.width * ratio)
-        logo = logo.resize((logo_w, 50), Image.LANCZOS)
-        canvas.paste(logo, (CARD_WIDTH - logo_w - 60, 46), logo)
+        logo_h = 115  # 기존 46 × 2.5
+        ratio = logo_h / logo.height
+        lw = int(logo.width * ratio)
+        logo = logo.resize((lw, logo_h), Image.LANCZOS)
+        logo_y = header_top + 24 - logo_h // 2  # 날짜 뱃지와 수직 중앙 맞춤
+        canvas.paste(logo, (CARD_W - lw - PAD, max(20, logo_y)), logo)
 
 
 # ═════════════════════════════════════════════════════════
-#  ★ 히어로 이미지 (사용자 업로드 이미지 = 주인공)
+#  메인 영역 (이미지 + 제목 + 감상평)
 # ═════════════════════════════════════════════════════════
 
-def _render_hero_images(canvas, draw, main_images, ai_placements, theme):
-    """사용자 이미지를 종이 배경 + 테이프로 꾸며서 크게 배치."""
-    if not main_images:
+def _render_main(canvas, draw, data, main_img, theme):
+    y_start = Y_MAIN[0] + 30  # 헤더와 간격 확보
+
+    # 이미지 영역: 좌측 절반
+    img_x = PAD
+    img_y = y_start
+    img_w = 500
+    img_h = 600  # 존 높이에 맞게 조정
+
+    if main_img:
+        # crop-to-fill
+        r = main_img.width / main_img.height
+        tr = img_w / img_h
+        if r > tr:
+            nh = img_h
+            nw = int(img_h * r)
+            main_img = main_img.resize((nw, nh), Image.LANCZOS)
+            left = (nw - img_w) // 2
+            main_img = main_img.crop((left, 0, left + img_w, img_h))
+        else:
+            nw = img_w
+            nh = int(img_w / r)
+            main_img = main_img.resize((nw, nh), Image.LANCZOS)
+            top = (nh - img_h) // 2
+            main_img = main_img.crop((0, top, img_w, top + img_h))
+
+        # 흰 프레임 (폴라로이드 스타일)
+        frame_pad = 14
+        frame_bottom = 50
+        frame_w = img_w + frame_pad * 2
+        frame_h = img_h + frame_pad + frame_bottom
+
+        # 그림자
+        shadow = Image.new('RGBA', (frame_w + 16, frame_h + 16), (0, 0, 0, 0))
+        sd = ImageDraw.Draw(shadow)
+        sd.rounded_rectangle([(0, 0), (frame_w + 15, frame_h + 15)],
+                             radius=6, fill=(0, 0, 0, 40))
+        shadow = shadow.filter(ImageFilter.GaussianBlur(10))
+        canvas.paste(shadow, (img_x - frame_pad + 4, img_y - frame_pad + 4), shadow)
+
+        # 프레임
+        frame = Image.new('RGBA', (frame_w, frame_h), (255, 255, 255, 250))
+        fd = ImageDraw.Draw(frame)
+        fd.rounded_rectangle([(0, 0), (frame_w - 1, frame_h - 1)],
+                             radius=4, fill=(255, 255, 255, 250))
+        frame.paste(main_img, (frame_pad, frame_pad),
+                    main_img if main_img.mode == 'RGBA' else None)
+
+        # 살짝 기울이기
+        rot = random.choice([-3, -2, 2, 3])
+        frame = frame.rotate(rot, expand=True, fillcolor=(0, 0, 0, 0))
+        canvas.paste(frame, (img_x - frame_pad, img_y - frame_pad), frame)
+
+        # 테이프
+        if theme.get('tapes'):
+            tape = _load_asset(theme['tapes'][0])
+            if tape:
+                tape_rot = random.randint(-15, 15)
+                tape = tape.rotate(tape_rot, expand=True, fillcolor=(0, 0, 0, 0))
+                tx = img_x + img_w // 2 - tape.width // 2
+                ty = img_y - frame_pad - tape.height // 2
+                canvas.paste(tape, (tx, ty), tape)
+
+    # 우측: 제목 + 감상평
+    text_x = 600
+    text_w = CARD_W - text_x - PAD
+
+    # 작품 제목 (한글)
+    title_ko = data.get('title_ko', '')
+    title_en = data.get('title_en', '')
+    y_cursor = y_start + 30
+
+    if title_ko:
+        f = _font(48, 'bold')
+        h = _draw_text(draw, title_ko, text_x, y_cursor, text_w, f,
+                       theme['title_color'], max_lines=3)
+        y_cursor += h + 8
+
+    # 영어 제목
+    if title_en:
+        f = _font(22, 'normal')
+        draw.text((text_x, y_cursor), title_en.upper(),
+                  fill=theme['subtitle_color'], font=f)
+        y_cursor += 40
+
+    # 구분선
+    draw.line([(text_x, y_cursor), (text_x + text_w - 20, y_cursor)],
+              fill=theme['card_border'], width=2)
+    y_cursor += 30
+
+    # 감상평 (인용 스타일)
+    quote = data.get('quote', '')
+    if quote:
+        # 인용부호
+        qf = _font(60, 'bold')
+        draw.text((text_x - 5, y_cursor - 15), '“',
+                  fill=theme['accent'], font=qf)
+        y_cursor += 35
+
+        f = _font(28, 'normal')
+        h = _draw_text(draw, quote, text_x + 10, y_cursor, text_w - 20, f,
+                       theme['quote_color'], max_lines=8, line_h_mult=1.6)
+        y_cursor += h + 10
+
+        draw.text((text_x + text_w - 50, y_cursor), '”',
+                  fill=theme['accent'], font=qf)
+
+
+# ═════════════════════════════════════════════════════════
+#  메모 + 레이팅
+# ═════════════════════════════════════════════════════════
+
+def _render_memo_rating(canvas, draw, data, theme):
+    y_start = Y_MEMO[0] + 15
+
+    # ── 메모 카드 (좌측) ─────────────────────────────────
+    memo_text = data.get('memo_text', '')
+    memo_x = PAD
+    memo_y = y_start
+    memo_w = 600
+    memo_h = Y_MEMO[1] - Y_MEMO[0] - 30
+
+    memo_bg = _rounded_rect_img(memo_w, memo_h, 16,
+                                theme['memo_bg'], theme['memo_border'])
+    canvas.paste(memo_bg, (memo_x, memo_y), memo_bg)
+
+    # MEMO 라벨
+    lf = _font(20, 'bold')
+    draw.text((memo_x + 24, memo_y + 18), 'MEMO',
+              fill=theme['accent'], font=lf)
+
+    # 메모 텍스트
+    if memo_text:
+        f = _font(26, 'normal')
+        _draw_text(draw, memo_text, memo_x + 24, memo_y + 58,
+                   memo_w - 48, f, theme['text_color'],
+                   max_lines=10, line_h_mult=1.55)
+
+    # ── 레이팅 카드 (우측) ───────────────────────────────
+    rating_str = data.get('rating', '')
+    rating_x = memo_x + memo_w + 30
+    rating_y = y_start
+    rating_w = CARD_W - rating_x - PAD
+    rating_h = memo_h
+
+    rating_bg = _rounded_rect_img(rating_w, rating_h, 16,
+                                  theme['rating_bg'], theme['card_border'])
+    canvas.paste(rating_bg, (rating_x, rating_y), rating_bg)
+
+    # MY RATING 라벨
+    draw.text((rating_x + 24, rating_y + 18), 'MY RATING',
+              fill=theme['accent'], font=lf)
+
+    if rating_str:
+        # 숫자 파싱
+        try:
+            score = float(rating_str.split('/')[0].strip())
+        except (ValueError, IndexError):
+            score = 0
+
+        # 별 표시
+        filled = int(round(score / 2))
+        stars = '★' * filled + '☆' * (5 - filled)
+        sf = _font(44, 'bold')
+        star_bbox = sf.getbbox(stars)
+        star_w = star_bbox[2] - star_bbox[0]
+        sx = rating_x + (rating_w - star_w) // 2
+        draw.text((sx, rating_y + 80), stars,
+                  fill=theme['accent'], font=sf)
+
+        # 숫자
+        nf = _font(72, 'bold')
+        score_text = f'{score:g}'
+        sb = nf.getbbox(score_text)
+        sw = sb[2] - sb[0]
+
+        nf2 = _font(36, 'normal')
+        suffix = ' / 10'
+        sb2 = nf2.getbbox(suffix)
+        sw2 = sb2[2] - sb2[0]
+
+        total_w = sw + sw2
+        start_x = rating_x + (rating_w - total_w) // 2
+        ny = rating_y + 150
+        draw.text((start_x, ny), score_text,
+                  fill=theme['title_color'], font=nf)
+        draw.text((start_x + sw, ny + 30), suffix,
+                  fill=theme['subtitle_color'], font=nf2)
+
+
+# ═════════════════════════════════════════════════════════
+#  태그
+# ═════════════════════════════════════════════════════════
+
+def _render_tags(canvas, draw, data, theme):
+    tags = data.get('tags', [])
+    if not tags:
         return
 
-    placement_map = {}
-    for p in (ai_placements or []):
-        idx = p.get('index')
-        if idx is not None:
-            placement_map[idx] = p
+    y_start = Y_TAGS[0] + 20
 
-    for img_data in main_images:
-        # 이미지 로드
-        local_path = img_data.get('_local_path', '')
-        src = img_data.get('imageSrc') or ''
-        img = _load_local_image(local_path) if local_path else _download_image(src)
+    # TAGS 라벨
+    lf = _font(22, 'bold')
+    draw.text((PAD + 8, y_start), 'TAGS', fill=theme['accent'], font=lf)
+    y_start += 48
+
+    # 태그 뱃지들
+    f = _font(24, 'normal')
+    x_cursor = PAD
+    line_y = y_start
+
+    for tag in tags:
+        tag_text = f'#{tag}'
+        bbox = f.getbbox(tag_text)
+        tw = bbox[2] - bbox[0]
+        badge_w = tw + 32
+        badge_h = 44
+
+        # 줄바꿈 체크
+        if x_cursor + badge_w > CARD_W - PAD:
+            x_cursor = PAD
+            line_y += badge_h + 14
+
+        badge = _rounded_rect_img(badge_w, badge_h, 22,
+                                  theme['tag_bg'], theme['tag_border'])
+        canvas.paste(badge, (x_cursor, line_y), badge)
+        draw.text((x_cursor + 16, line_y + 8), tag_text,
+                  fill=theme['tag_text'], font=f)
+        x_cursor += badge_w + 12
+
+
+# ═════════════════════════════════════════════════════════
+#  스티커 스트립
+# ═════════════════════════════════════════════════════════
+
+def _render_sticker_strip(canvas, deco_stickers, y_zone, theme, offset=0):
+    """다이어리 스티커를 지정된 Y 존에 배치한다.
+
+    offset: 스티커 리스트에서 시작 인덱스 (상단/하단 분배용)
+    """
+    if not deco_stickers:
+        return
+
+    zone_h = y_zone[1] - y_zone[0]
+    zone_mid_y = y_zone[0] + zone_h // 2
+
+    # 사용할 스티커 선택 (offset부터 최대 3개)
+    batch = deco_stickers[offset:offset + 3]
+    if not batch:
+        # offset이 범위 밖이면 처음부터 다시
+        batch = deco_stickers[:min(2, len(deco_stickers))]
+
+    # 균등 분배 X 좌표
+    n = len(batch)
+    if n == 0:
+        return
+
+    spacing = (CARD_W - PAD * 2) // (n + 1)
+
+    for i, sticker in enumerate(batch):
+        img = _load_sticker_image(sticker)
         if not img:
             continue
 
-        # AI 배치 또는 기본 배치
-        idx = img_data.get('_sticker_index', -1)
-        placement = placement_map.get(idx)
+        # 크기 조정 (존 높이에 맞게, 최대 120px)
+        max_size = min(zone_h - 10, 120)
+        scale = min(max_size / img.width, max_size / img.height)
+        sw = int(img.width * scale)
+        sh = int(img.height * scale)
+        img = img.resize((sw, sh), Image.LANCZOS)
 
-        if placement:
-            px = int(placement.get('x', 100))
-            py = max(int(placement.get('y', 180)), ZONE_MAIN[0])
-            pw = int(placement.get('width', 800))
-            ph = int(placement.get('height', 700))
-            rotation = int(placement.get('rotation', 0))
-        else:
-            # 기본: Zone 2 중앙에 크게
-            px = 80
-            py = ZONE_MAIN[0] + 40
-            pw = CARD_WIDTH - 160
-            ph = ZONE_MAIN[1] - ZONE_MAIN[0] - 120
-            rotation = random.choice([-3, -2, 0, 2, 3])
+        # 살짝 회전
+        rot = random.randint(-15, 15)
+        img = img.rotate(rot, expand=True, fillcolor=(0, 0, 0, 0))
 
-        _paste_hero_photo(canvas, img, px, py, pw, ph, rotation, theme)
+        # 배치
+        sx = PAD + spacing * (i + 1) - img.width // 2
+        sy = zone_mid_y - img.height // 2
+        canvas.paste(img, (sx, sy), img)
 
 
-def _paste_hero_photo(canvas, img, x, y, w, h, rotation, theme):
-    """
-    히어로 이미지: 종이 매트 + 사진 + 테이프.
-
-    종이 매트(paper_tint)가 배경이 되고,
-    그 위에 이미지를 올리고,
-    테이프로 고정하는 스크랩북 느낌.
-    """
-    # 이미지를 목표 크기에 맞춤 (비율 유지, crop-to-fill)
-    img_ratio = img.width / img.height
-    target_ratio = w / h
-    if img_ratio > target_ratio:
-        # 이미지가 더 넓음 → 높이 맞추고 가로 crop
-        new_h = h
-        new_w = int(h * img_ratio)
-        img = img.resize((new_w, new_h), Image.LANCZOS)
-        left = (new_w - w) // 2
-        img = img.crop((left, 0, left + w, h))
-    else:
-        # 이미지가 더 높음 → 가로 맞추고 세로 crop
-        new_w = w
-        new_h = int(w / img_ratio)
-        img = img.resize((new_w, new_h), Image.LANCZOS)
-        top = (new_h - h) // 2
-        img = img.crop((0, top, w, top + h))
-
-    # 종이 매트 (이미지보다 약간 큰 흰색 종이)
-    paper_pad = 20
-    paper_w = w + paper_pad * 2
-    paper_h = h + paper_pad * 2
-
-    paper = Image.new('RGBA', (paper_w, paper_h), theme.get('paper_tint', (255, 250, 240, 240)))
-    paper_draw = ImageDraw.Draw(paper)
-    # 종이 테두리 (살짝 어두운 선)
-    paper_draw.rounded_rectangle(
-        [(0, 0), (paper_w - 1, paper_h - 1)],
-        radius=4, outline=(0, 0, 0, 30), width=1,
-    )
-    # 이미지를 종이 위에 올리기
-    paper.paste(img, (paper_pad, paper_pad), img if img.mode == 'RGBA' else None)
-
-    # 그림자
-    shadow = Image.new('RGBA', (paper_w + 24, paper_h + 24), (0, 0, 0, 0))
-    shadow_base = Image.new('RGBA', (paper_w, paper_h), (0, 0, 0, 45))
-    shadow.paste(shadow_base, (12, 12))
-    shadow = shadow.filter(ImageFilter.GaussianBlur(12))
-
-    # 회전
-    if rotation:
-        paper = paper.rotate(rotation, expand=True, fillcolor=(0, 0, 0, 0))
-        shadow = shadow.rotate(rotation, expand=True, fillcolor=(0, 0, 0, 0))
-
-    # 붙이기
-    sx = x - paper_pad
-    sy = y - paper_pad
-    canvas.paste(shadow, (sx, sy), shadow)
-    canvas.paste(paper, (sx, sy), paper)
-
-    # 테이프 2개 (위쪽 양 모서리)
-    if theme.get('tapes'):
-        tape_positions = [
-            (x + w // 4 - 30, y - paper_pad - 15),          # 왼쪽 상단
-            (x + w * 3 // 4 - 30, y - paper_pad - 15),      # 오른쪽 상단
-        ]
-        for i, (tx, ty) in enumerate(tape_positions):
-            tape_name = theme['tapes'][i % len(theme['tapes'])]
-            tape = _load_asset(tape_name)
-            if tape:
-                tape_scale = random.uniform(0.9, 1.2)
-                tape = tape.resize(
-                    (int(tape.width * tape_scale), int(tape.height * tape_scale)),
-                    Image.LANCZOS,
-                )
-                tape_rot = random.randint(-20, 20)
-                tape = tape.rotate(tape_rot, expand=True, fillcolor=(0, 0, 0, 0))
-                canvas.paste(tape, (tx, ty), tape)
+def _load_sticker_image(sticker: dict) -> Image.Image | None:
+    """스티커 dict에서 이미지를 로드한다."""
+    local = sticker.get('_local_path', '')
+    if local:
+        return _load_local_image(local)
+    src = sticker.get('imageSrc') or ''
+    if src and not src.startswith('/api/records/uploads/'):
+        return _download_image(src) if src.startswith('http') else None
+    return None
 
 
 # ═════════════════════════════════════════════════════════
-#  포스터 (작은 폴라로이드)
+#  푸터
 # ═════════════════════════════════════════════════════════
 
-def _render_poster_mini(canvas, draw, layout_data, poster_url, theme):
-    """포스터를 작은 폴라로이드로 구석에 배치."""
-    collage = layout_data.get('collage', {})
-    poster = collage.get('poster', {})
+def _render_footer(canvas, draw, theme):
+    y = Y_FOOTER[0] + 20
+    f = _font(20, 'normal')
 
-    # AI가 지정한 좌표 사용, 없으면 기본값
-    px = int(poster.get('x', 80))
-    py = int(poster.get('y', 800))
-    pw = int(poster.get('width', 220))
-    ph = int(poster.get('height', 310))
+    # 좌측: 덕꾸
+    draw.text((PAD, y), 'DEOKKKU', fill=theme['footer_color'], font=f)
 
-    # 포스터가 너무 크면 축소 (v4에서는 보조 요소)
-    max_poster_w = 320
-    if pw > max_poster_w:
-        ratio = max_poster_w / pw
-        pw = max_poster_w
-        ph = int(ph * ratio)
-
-    if poster_url and os.path.isfile(poster_url):
-        poster_img = _load_local_image(poster_url)
-    else:
-        poster_img = _download_image(poster_url)
-
-    if not poster_img:
-        return
-
-    poster_img = poster_img.resize((pw, ph), Image.LANCZOS)
-    _paste_polaroid(canvas, poster_img, px, py, pw, ph, theme)
-
-    # 라벨 (작품명)
-    poster_label = collage.get('label', '')
-    if poster_label:
-        font = _load_font(22, 'normal')
-        bbox = font.getbbox(poster_label)
-        tw = bbox[2] - bbox[0]
-        lx = px + (pw - tw) // 2
-        ly = py + ph + 65
-        draw.text((lx, ly), poster_label, fill='#7B6B5A', font=font)
-
-
-def _paste_polaroid(canvas, img, x, y, w, h, theme):
-    """폴라로이드 프레임 + 테이프."""
-    pad = 16
-    bottom_pad = 50
-    frame_w = w + pad * 2
-    frame_h = h + pad + bottom_pad
-
-    # 그림자
-    shadow = Image.new('RGBA', (frame_w + 16, frame_h + 16), (0, 0, 0, 0))
-    sd = ImageDraw.Draw(shadow)
-    sd.rounded_rectangle([(0, 0), (frame_w + 15, frame_h + 15)], radius=4, fill=(0, 0, 0, 35))
-    shadow = shadow.filter(ImageFilter.GaussianBlur(8))
-
-    # 프레임
-    frame = Image.new('RGBA', (frame_w, frame_h), (255, 255, 255, 255))
-    fd = ImageDraw.Draw(frame)
-    fd.rounded_rectangle([(0, 0), (frame_w - 1, frame_h - 1)], radius=3, fill=(255, 255, 255, 255))
-    frame.paste(img, (pad, pad), img if img.mode == 'RGBA' else None)
-
-    rotation = random.choice([-5, -3, 3, 5, 7])
-    frame = frame.rotate(rotation, expand=True, fillcolor=(0, 0, 0, 0))
-    shadow = shadow.rotate(rotation, expand=True, fillcolor=(0, 0, 0, 0))
-
-    sx = x - pad - 8
-    sy = y - pad - 8
-    canvas.paste(shadow, (sx + 6, sy + 6), shadow)
-    canvas.paste(frame, (sx, sy), frame)
-
-    # 테이프 1개
-    if theme.get('tapes'):
-        tape_name = random.choice(theme['tapes'])
-        tape = _load_asset(tape_name)
-        if tape:
-            tape_rot = random.randint(-25, 25)
-            tape = tape.rotate(tape_rot, expand=True, fillcolor=(0, 0, 0, 0))
-            tx = x + w // 2 - tape.width // 2
-            ty = y - pad - tape.height // 2
-            canvas.paste(tape, (tx, ty), tape)
-
-
-# ═════════════════════════════════════════════════════════
-#  장식 스티커 (말풍선 · 아이콘 · 기본 스티커)
-# ═════════════════════════════════════════════════════════
-
-def _render_deco_stickers(canvas, deco_stickers, ai_placements):
-    """메인 이미지가 아닌 스티커들을 위에 얹는다."""
-    placement_map = {}
-    for p in (ai_placements or []):
-        idx = p.get('index')
-        if idx is not None:
-            placement_map[idx] = p
-
-    for sticker in deco_stickers:
-        idx = sticker.get('_sticker_index', -1)
-        placement = placement_map.get(idx)
-        _render_sticker(canvas, sticker, placement)
-
-
-def _render_sticker(canvas, sticker_data, placement=None):
-    item_type = sticker_data.get('type', 'sticker')
-
-    if placement:
-        px = int(placement.get('x', 0))
-        py = max(int(placement.get('y', 0)), ZONE_MAIN[0])
-        ai_w = int(placement.get('width', 0))
-        ai_h = int(placement.get('height', 0))
-        rotation = int(placement.get('rotation', 0))
-    else:
-        x_pct = sticker_data.get('x', 0)
-        y_pct = sticker_data.get('y', 0)
-        px = int(x_pct / 100 * CARD_WIDTH)
-        py = max(int(y_pct / 100 * CARD_HEIGHT), ZONE_MAIN[0])
-        ai_w = 0
-        ai_h = 0
-        rotation = int(sticker_data.get('rotate', 0))
-
-    if item_type == 'bubble':
-        ai_font_size = int(placement.get('font_size', 0)) if placement else 0
-        _render_bubble_sticker(canvas, sticker_data, px, py,
-                               override_w=ai_w, override_h=ai_h,
-                               override_font_size=ai_font_size)
-    elif sticker_data.get('imageSrc'):
-        _render_image_sticker(canvas, sticker_data, px, py, rotation,
-                              override_w=ai_w, override_h=ai_h)
-    elif sticker_data.get('icon'):
-        _render_icon_sticker(canvas, sticker_data, px, py, rotation,
-                             override_size=ai_w)
-
-
-def _render_icon_sticker(canvas, data, px, py, rotation, override_size=0):
-    icon = data.get('icon', '')
-    if not icon:
-        return
-    if override_size:
-        font_size = max(24, override_size // 2)
-    else:
-        scale = data.get('scale', 1.0)
-        font_size = int(48 * scale)
-    font = _load_font(font_size, 'bold')
-
-    text_img = Image.new('RGBA', (font_size * 3, font_size * 3), (0, 0, 0, 0))
-    text_draw = ImageDraw.Draw(text_img)
-    try:
-        bbox = font.getbbox(icon)
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
-    except Exception:
-        tw, th = font_size, font_size
-    tx = (text_img.width - tw) // 2
-    ty = (text_img.height - th) // 2
-    text_draw.text((tx, ty), icon, fill='#6b5b8a', font=font)
-
-    bbox_actual = text_img.getbbox()
-    if bbox_actual:
-        text_img = text_img.crop(bbox_actual)
-
-    if rotation:
-        text_img = text_img.rotate(-rotation, expand=True, fillcolor=(0, 0, 0, 0))
-
-    canvas.paste(text_img, (px, py), text_img)
-
-
-def _render_image_sticker(canvas, data, px, py, rotation,
-                          override_w=0, override_h=0):
-    local_path = data.get('_local_path', '')
-    src = data.get('imageSrc') or ''
-    if not src and not local_path:
-        return
-
-    img = _load_local_image(local_path) if local_path else _download_image(src)
-    if not img:
-        return
-
-    if override_w and override_h:
-        target_w = override_w
-        target_h = override_h
-    elif override_w:
-        ratio = override_w / img.width
-        target_w = override_w
-        target_h = int(img.height * ratio)
-    else:
-        scale = data.get('scale', 0.72)
-        target_w = int(CARD_WIDTH * 0.15 * scale)
-        ratio = target_w / img.width
-        target_h = int(img.height * ratio)
-    img = img.resize((target_w, target_h), Image.LANCZOS)
-
-    # 둥근 모서리
-    radius = min(12, target_w // 8, target_h // 8)
-    mask = Image.new('L', (target_w, target_h), 0)
-    mask_draw = ImageDraw.Draw(mask)
-    mask_draw.rounded_rectangle([(0, 0), (target_w, target_h)], radius=radius, fill=255)
-    img.putalpha(mask)
-
-    if rotation:
-        img = img.rotate(-rotation, expand=True, fillcolor=(0, 0, 0, 0))
-
-    # 그림자
-    shadow = Image.new('RGBA', (img.width + 8, img.height + 8), (0, 0, 0, 0))
-    shadow_base = Image.new('RGBA', img.size, (0, 0, 0, 35))
-    shadow.paste(shadow_base, (4, 4))
-    shadow = shadow.filter(ImageFilter.GaussianBlur(4))
-    canvas.paste(shadow, (px, py), shadow)
-
-    canvas.paste(img, (px, py), img)
-
-
-def _render_bubble_sticker(canvas, data, px, py, override_w=0, override_h=0,
-                           override_font_size=0):
-    text = data.get('text', '')
-    bubble_type = data.get('bubbleType', 'normal')
-    if override_w and override_h:
-        width = override_w
-        height = override_h
-    else:
-        width = int(data.get('width', 180) * CARD_WIDTH / 640)
-        height = int(data.get('height', 100) * CARD_HEIGHT / 900)
-
-    if override_font_size:
-        font_size = override_font_size
-    else:
-        font_size = _auto_bubble_font_size(text, width, height)
-
-    bg_color = data.get('bgColor', '#ffffff')
-    border_color = data.get('borderColor', '#b49cd8')
-    text_color = data.get('textColor', '#342a3f')
-
-    total_h = height + 24 if bubble_type == 'thought' else height + 18
-    bubble = Image.new('RGBA', (width + 8, total_h + 8), (0, 0, 0, 0))
-    bubble_draw = ImageDraw.Draw(bubble)
-
-    # 그림자
-    radius = 28 if bubble_type == 'thought' else 20
-    bubble_draw.rounded_rectangle(
-        [(6, 6), (width + 5, height + 5)],
-        radius=radius, fill=(0, 0, 0, 25),
-    )
-
-    # 본체
-    bubble_draw.rounded_rectangle(
-        [(2, 2), (width + 1, height + 1)],
-        radius=radius, fill=bg_color, outline=border_color, width=2,
-    )
-
-    # 꼬리
-    if bubble_type == 'thought':
-        bubble_draw.ellipse([18, height, 30, height + 10], fill=bg_color, outline=border_color, width=2)
-        bubble_draw.ellipse([10, height + 8, 18, height + 16], fill=bg_color, outline=border_color, width=2)
-    else:
-        tail = [(14, height - 1), (26, height - 1), (10, height + 14)]
-        bubble_draw.polygon(tail, fill=bg_color, outline=border_color)
-        bubble_draw.line([(16, height - 1), (24, height - 1)], fill=bg_color, width=3)
-
-    if text:
-        font = _load_font(font_size, 'bold')
-        padding = 14
-        _draw_text_on_image(bubble_draw, text, padding + 2, padding + 2,
-                            width - padding * 2, font, text_color)
-
-    canvas.paste(bubble, (px, py), bubble)
-
-
-def _auto_bubble_font_size(text: str, width: int, height: int) -> int:
-    if not text:
-        return 20
-    padding = 16 * 2
-    usable_w = max(width - padding, 60)
-    usable_h = max(height - padding, 40)
-    for fs in range(28, 11, -2):
-        chars_per_line = max(1, usable_w // fs)
-        num_lines = (len(text) + chars_per_line - 1) // chars_per_line
-        total_h = int(num_lines * fs * 1.4)
-        if total_h <= usable_h:
-            return fs
-    return 12
-
-
-def _draw_text_on_image(draw, text, x, y, max_w, font, color):
-    lines = _wrap_text(text, font, max_w)
-    line_h = int(font.size * 1.4)
-    for i, line in enumerate(lines):
-        draw.text((x, y + i * line_h), line, fill=color, font=font)
-
-
-# ═════════════════════════════════════════════════════════
-#  Zone 3: 메모
-# ═════════════════════════════════════════════════════════
-
-def _render_memo(canvas, draw, layout_data, theme):
-    memo = layout_data.get('memo', {})
-    text = memo.get('text', '')
-    if not text:
-        return
-
-    mx = int(memo.get('x', 100))
-    my = int(memo.get('y', ZONE_MEMO[0] + 20))
-    mw = int(memo.get('width', 880))
-    mh = int(memo.get('height', 300))
-    text_color = memo.get('text_color', '#444444')
-
-    # 메모지 에셋
-    memo_asset = _load_asset(theme.get('memo', 'memo_cream_grid.png'))
-    if memo_asset:
-        memo_asset = memo_asset.resize((mw, mh), Image.LANCZOS)
-        shadow = Image.new('RGBA', (mw + 12, mh + 12), (0, 0, 0, 0))
-        shadow_base = Image.new('RGBA', (mw, mh), (0, 0, 0, 30))
-        shadow.paste(shadow_base, (6, 6))
-        shadow = shadow.filter(ImageFilter.GaussianBlur(6))
-        canvas.paste(shadow, (mx, my), shadow)
-        canvas.paste(memo_asset, (mx, my), memo_asset)
-    else:
-        bg_color = memo.get('bg_color', '#FFFFFF')
-        border_color = memo.get('border_color', None)
-        draw.rounded_rectangle(
-            (mx, my, mx + mw, my + mh),
-            radius=12, fill=bg_color,
-            outline=border_color, width=2 if border_color else 0,
-        )
-
-    # 테이프 2개
-    if theme.get('tapes'):
-        for i, pos in enumerate([(mx + 20, my - 12), (mx + mw - 60, my - 12)]):
-            tape_name = theme['tapes'][i % len(theme['tapes'])]
-            tape = _load_asset(tape_name)
-            if tape:
-                tape_rot = random.choice([-15, -10, 10, 15])
-                tape = tape.rotate(tape_rot, expand=True, fillcolor=(0, 0, 0, 0))
-                canvas.paste(tape, pos, tape)
-
-    font_size = int(memo.get('font_size', 28))
-    font = _load_font(font_size, 'normal')
-    padding = 30
-    _draw_text_block(draw, text, mx + padding, my + padding + 10,
-                     mw - padding * 2, font, color=text_color,
-                     align='left', max_lines=8)
-
-
-# ═════════════════════════════════════════════════════════
-#  Zone 4: 정보
-# ═════════════════════════════════════════════════════════
-
-def _render_info(canvas, draw, layout_data, theme):
-    info = layout_data.get('info', {})
-    text_color = info.get('text_color', '#333333')
-    accent_color = info.get('accent_color', theme.get('info_accent', '#7C3AED'))
-
-    center_x = CARD_WIDTH // 2
-    y_cursor = ZONE_INFO[0] + 30
+    # 우측: 날짜 등
+    right_text = 'RECORD YOUR ANIME LIFE'
+    bbox = f.getbbox(right_text)
+    tw = bbox[2] - bbox[0]
+    draw.text((CARD_W - PAD - tw, y), right_text,
+              fill=theme['footer_color'], font=f)
 
     # 구분선
-    draw.line(
-        [(center_x - 200, y_cursor - 10), (center_x + 200, y_cursor - 10)],
-        fill=accent_color + '40' if len(accent_color) == 7 else accent_color,
-        width=2,
-    )
-
-    # 작품 제목
-    title = info.get('title', '')
-    if title:
-        font = _load_font(42, 'bold')
-        bbox = font.getbbox(title)
-        tw = bbox[2] - bbox[0]
-        draw.text((center_x - tw // 2, y_cursor), title,
-                  fill=text_color, font=font)
-        y_cursor += 65
-
-    # 별점
-    rating = info.get('rating', '')
-    if rating:
-        font = _load_font(44, 'bold')
-        rating_str = f'★ {rating}'
-        bbox = font.getbbox(rating_str)
-        tw = bbox[2] - bbox[0]
-        draw.text((center_x - tw // 2, y_cursor), rating_str,
-                  fill=accent_color, font=font)
-        y_cursor += 70
-
-    # 태그
-    tags = info.get('tags', [])
-    if tags:
-        font = _load_font(22, 'normal')
-        tag_color = info.get('tag_color', '#888888')
-        total_w = 0
-        tag_sizes = []
-        for t in tags:
-            tag_text = f'#{t}'
-            bbox = font.getbbox(tag_text)
-            tw = bbox[2] - bbox[0]
-            tag_sizes.append((tag_text, tw))
-            total_w += tw + 28 + 10
-        total_w -= 10
-
-        start_x = center_x - total_w // 2
-        for tag_text, tw in tag_sizes:
-            badge_w = tw + 28
-            badge_h = 36
-            draw.rounded_rectangle(
-                [(start_x, y_cursor), (start_x + badge_w, y_cursor + badge_h)],
-                radius=18, fill=accent_color + '20' if len(accent_color) == 7 else accent_color,
-                outline=accent_color + '40' if len(accent_color) == 7 else accent_color,
-            )
-            draw.text((start_x + 14, y_cursor + 5), tag_text,
-                      fill=tag_color, font=font)
-            start_x += badge_w + 10
+    draw.line([(PAD, Y_FOOTER[0] + 5), (CARD_W - PAD, Y_FOOTER[0] + 5)],
+              fill=theme['card_border'], width=1)
 
 
 # ═════════════════════════════════════════════════════════
-#  장식 흩뿌리기
+#  장식
 # ═════════════════════════════════════════════════════════
 
-def _scatter_decorations(canvas, theme, layout_data):
-    decos = theme.get('decos', [])
-    if not decos:
-        return
+def _render_decorations(canvas, theme, data):
+    """테마 장식을 카드 여백에 가볍게 배치."""
+    random.seed(hash(str(data.get('date', ''))) % 2**32)
 
-    random.seed(hash(str(layout_data.get('header', {}).get('date', ''))) % 2**32)
+    # 존 경계 근처에 장식 2~3개만
+    deco_map = {
+        'dark': ['deco_sparkle.png', 'deco_sparkle_small.png'],
+        'warm': ['deco_flower_pink.png', 'deco_star_gold.png'],
+        'cool': ['deco_flower_purple.png', 'deco_sparkle.png'],
+        'cute': ['deco_heart_pink.png', 'deco_flower_pink.png'],
+    }
+
+    # 테마 키 추정
+    mood = data.get('mood', '').lower()
+    if any(k in mood for k in ('다크', 'dark')):
+        decos = deco_map['dark']
+    elif any(k in mood for k in ('귀여', 'cute')):
+        decos = deco_map['cute']
+    elif any(k in mood for k in ('차가', 'cool')):
+        decos = deco_map['cool']
+    else:
+        decos = deco_map['warm']
 
     positions = [
-        (CARD_WIDTH - 160, 20), (CARD_WIDTH - 100, 90),
-        (40, 200), (CARD_WIDTH - 100, 250),
-        (60, 500), (CARD_WIDTH - 80, 600),
-        (CARD_WIDTH - 120, 900),
-        (80, 1160), (CARD_WIDTH - 100, 1180),
-        (CARD_WIDTH - 80, 1450),
-        (80, 1850), (CARD_WIDTH - 100, 1830),
+        (CARD_W - 120, 30),
+        (CARD_W - 80, Y_MAIN[1] - 60),
+        (40, Y_TAGS[0] - 30),
     ]
 
-    count = min(len(positions), random.randint(4, 6))
-    chosen = random.sample(positions, count)
-
-    for i, (dx, dy) in enumerate(chosen):
-        deco_name = decos[i % len(decos)]
-        deco = _load_asset(deco_name)
+    for i, (dx, dy) in enumerate(positions):
+        deco = _load_asset(decos[i % len(decos)])
         if not deco:
             continue
-        scale = random.uniform(0.7, 1.3)
-        new_w = int(deco.width * scale)
-        new_h = int(deco.height * scale)
-        deco = deco.resize((new_w, new_h), Image.LANCZOS)
-        rot = random.randint(-30, 30)
+        scale = random.uniform(0.6, 1.0)
+        deco = deco.resize((int(deco.width * scale), int(deco.height * scale)),
+                           Image.LANCZOS)
+        rot = random.randint(-20, 20)
         deco = deco.rotate(rot, expand=True, fillcolor=(0, 0, 0, 0))
-        ox = dx + random.randint(-15, 15)
-        oy = dy + random.randint(-15, 15)
-        canvas.paste(deco, (ox, oy), deco)
+        canvas.paste(deco, (dx, dy), deco)

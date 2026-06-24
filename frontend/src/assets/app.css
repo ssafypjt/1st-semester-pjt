@@ -1935,6 +1935,26 @@ button {
   font-weight: 800;
 }
 
+.content-textarea {
+  width: 100%;
+  min-height: 118px;
+  resize: vertical;
+  border: 1px solid rgba(204, 186, 222, .85);
+  border-radius: 12px;
+  padding: 12px;
+  color: #4a3c59;
+  background: rgba(255, 255, 255, .9);
+  font: inherit;
+  font-weight: 700;
+  line-height: 1.5;
+  outline: none;
+}
+
+.content-textarea:focus {
+  border-color: #8b5ad7;
+  box-shadow: 0 0 0 3px rgba(139, 90, 215, .14);
+}
+
 .subtabs {
   display: flex;
   flex-wrap: wrap;
