@@ -160,7 +160,7 @@
               </div>
             </div>
 
-            <article class="scrapbook blank-scrapbook" @click.self="clearDecorationSelection">
+            <article class="scrapbook blank-scrapbook" :style="{ '--canvas-scale': canvasScale }" @click.self="clearDecorationSelection">
               <div class="page left-page" @click="clearDecorationSelection">
                 <button class="record-title-edit" type="button" title="기록 정보 수정" @click.stop="openRecordModal('edit')">
                   <small>{{ selectedView.date }}</small>
@@ -452,9 +452,27 @@
             @delete-card="deleteSavedCard"
           />
 
-          <!-- 공유 페이지 안내 (기존 nav 연결 유지) -->
-          <div v-if="activePage === '공유 페이지'" class="share-page-section">
-            <p class="share-page-hint">기록 작성 화면에서 <b>공유하기</b> 버튼을 눌러 공유 카드를 만들 수 있습니다.</p>
+          <div v-if="activePage === '카드함'" class="cardbox-page">
+            <div v-if="!cardBoxItems || cardBoxItems.length === 0" class="cardbox-empty">
+              <p>아직 만든 공유 카드가 없습니다.</p>
+              <small>기록 작성 화면에서 <b>공유하기</b> 버튼을 눌러 카드를 만들어보세요.</small>
+            </div>
+            <div v-else class="cardbox-grid">
+              <div
+                v-for="card in cardBoxItems"
+                :key="card.id"
+                class="cardbox-item"
+              >
+                <img :src="card.image_url" :alt="card.template_name || '공유 카드'" @click="openCardBoxPreview(card)" />
+                <div class="cardbox-item-info">
+                  <small>{{ formatFeedDate(card.created_at) }}</small>
+                </div>
+                <div class="cardbox-item-actions">
+                  <button type="button" title="간직하기" @click="downloadCardBoxImage(card)">⬇</button>
+                  <button type="button" title="삭제" class="cardbox-delete" @click="deleteCardBoxItem(card)">✕</button>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -658,9 +676,26 @@
                     type="button"
                     @click="downloadShareImage"
                   >
-                    이미지 저장
+                    간직하기
+                  </button>
+                  <button
+                    v-if="latestShareCard"
+                    class="share-btn primary"
+                    type="button"
+                    @click="saveToCardBox"
+                  >
+                    카드함으로 보내기
                   </button>
                   <button class="share-btn" type="button" @click="closeShareModal">닫기</button>
+                </div>
+                <div v-if="showCardBoxConfirm" class="cardbox-confirm-overlay">
+                  <div class="cardbox-confirm-box">
+                    <p>카드함으로 보냈습니다!</p>
+                    <div class="cardbox-confirm-btns">
+                      <button class="share-btn primary" type="button" @click="goToCardBox">이동</button>
+                      <button class="share-btn outline" type="button" @click="showCardBoxConfirm = false">닫기</button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -811,12 +846,19 @@ export default {
       shareCards: [],            // 생성된 공유 카드 목록
       isGeneratingCard: false,   // AI 카드 생성 중
       shareCardError: '',        // 에러 메시지
+      canvasScale: 1,       // 미리보기 다이어리 확대/축소 비율
+
+      // ── 카드함 ──
+        cardBoxItems: [],          // 카드함에 저장된 공유 카드
+        showCardBoxConfirm: false,  // 카드함 저장 후 확인 모달 표시 여부
     };
   },
   watch: {
     placedItems: { handler() { this._dirty = true; }, deep: true },
     mainImageSrc() { this._dirty = true; },
     currentRecord: { handler() { this._dirty = true; }, deep: true },
+    activePage() { this.$nextTick(() => this._observeScrapbook()); },
+    isDiaryPreviewOpen() { this.$nextTick(() => this._observeScrapbook()); },
   },
   computed: {
     selectedView() {
@@ -954,6 +996,13 @@ export default {
         this._autosaveDraft();
       }
     });
+    this._scrapbookRO = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        // 기준 너비(예: 1800px) 대비 현재 너비의 비율을 계산
+        this.canvasScale = Math.min(entry.contentRect.width / 1800, 1);
+      }
+    });
+    this.$nextTick(() => this._observeScrapbook());
 
     this.loadRepresentativeBadges();
     this.checkAuth();
@@ -962,6 +1011,7 @@ export default {
       this._checkAutosaveRestore();
       this.$nextTick(() => { this._dirty = false; });
     });
+    
   },
   beforeUnmount() {
     window.removeEventListener("pointermove", this.handlePointerMove);
@@ -969,6 +1019,7 @@ export default {
     document.removeEventListener("click", this.handleProfileOutsideClick);
     document.removeEventListener("keydown", this.handleGlobalKeydown);
     window.removeEventListener("beforeunload", this._beforeUnloadHandler);
+    if (this._scrapbookRO) this._scrapbookRO.disconnect();
   },
   methods: {
     async toggleFeedLike(record) {
@@ -1501,6 +1552,7 @@ export default {
       }
       this.activePage = page;
       try { localStorage.setItem("deokkku:activePage", page); } catch (e) { /* ignore */ }
+      if (page === "카드함") this.loadCardBox();
     },
     openProfilePageFromDropdown() {
       this.navigatePage(this.nav[4]);
@@ -1525,6 +1577,12 @@ export default {
       const filled = Math.max(0, Math.min(5, Math.round(score / 2)));
       return "★".repeat(filled) + "☆".repeat(5 - filled);
     },
+    _observeScrapbook() {
+      if (!this._scrapbookRO) return;
+      this._scrapbookRO.disconnect();
+      const scrapbooks = this.$el.querySelectorAll('.scrapbook');
+      scrapbooks.forEach((el) => this._scrapbookRO.observe(el));
+    },
     placementStyle(item) {
       return {
         left: `${item.x}%`,
@@ -1532,6 +1590,8 @@ export default {
         width: item.width ? `${item.width}px` : null,
         height: item.height ? `${item.height}px` : null,
         zIndex: item.zIndex || 1,
+        transform: `scale(${this.canvasScale || 1})`,
+        transformOrigin: "top left",
         "--item-scale": (item.type === "text" || item.type === "image" || item.type === "bubble") ? 1 : item.scale || 1,
       };
     },
@@ -1921,14 +1981,15 @@ export default {
 
       if (this.resizing) {
         const { item, mode, startX, startY } = this.resizing;
+        const s = this.canvasScale || 1;
         if (mode === "box") {
-          item.width = this.clamp(this.resizing.startWidth + event.clientX - startX, 120, 440);
-          item.height = this.clamp(this.resizing.startHeight + event.clientY - startY, 100, 380);
+        item.width = this.clamp(this.resizing.startWidth + (event.clientX - startX) / s, 120, 440);
+        item.height = this.clamp(this.resizing.startHeight + (event.clientY - startY) / s, 100, 380);
         } else if (mode === "image-width") {
-          item.width = this.clamp(this.resizing.startWidth + event.clientX - startX, 60, 500);
+        item.width = this.clamp(this.resizing.startWidth + (event.clientX - startX) / s, 60, 500);
         } else {
-          const delta = Math.max(event.clientX - startX, event.clientY - startY);
-          item.scale = this.clamp(this.resizing.startScale + delta / 140, 0.45, 2.8);
+        const delta = Math.max(event.clientX - startX, event.clientY - startY);
+        item.scale = this.clamp(this.resizing.startScale + delta / 140, 0.45, 2.8);
         }
       }
 
@@ -2432,6 +2493,60 @@ export default {
         this._clearAutosave();
       }
     },
+    saveToCardBox() {
+      // AI 생성 시 이미 DB에 저장되어 있으므로 확인 오버레이만 표시
+      if (!this.latestShareCard) {
+        this.toastMessage = '저장할 공유 카드가 없습니다.';
+        return;
+      }
+      this.showCardBoxConfirm = true;
+    },
+    goToCardBox() {
+      this.showCardBoxConfirm = false;
+      this.isShareModalOpen = false;
+      this.navigatePage("카드함");
+    },
+    async loadCardBox() {
+      try {
+        const data = await this.apiFetch('/api/shares/my/');
+        this.cardBoxItems = Array.isArray(data) ? data : (data.results || []);
+      } catch (error) {
+        console.error('카드함 조회 실패:', error);
+        this.cardBoxItems = [];
+      }
+    },
+    openCardBoxPreview(card) {
+      if (card.image_url) window.open(card.image_url, '_blank');
+    },
+    async downloadCardBoxImage(card) {
+      if (!card.image_url) return;
+      try {
+        const resp = await fetch(card.image_url);
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `deokkku_card_${card.id}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error('이미지 다운로드 실패:', err);
+        this.toastMessage = '다운로드에 실패했습니다.';
+      }
+    },
+    async deleteCardBoxItem(card) {
+      if (!confirm('이 카드를 삭제할까요?')) return;
+      try {
+        await this.apiFetch(`/api/shares/card/${card.id}/delete/`, { method: 'DELETE' });
+        this.cardBoxItems = this.cardBoxItems.filter(c => c.id !== card.id);
+        this.toastMessage = '카드가 삭제되었습니다.';
+      } catch (error) {
+        console.error('카드 삭제 실패:', error);
+        this.toastMessage = '삭제에 실패했습니다.';
+      }
+    }
   },
 };
 </script>
