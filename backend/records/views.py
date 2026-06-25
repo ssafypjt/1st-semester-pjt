@@ -8,7 +8,7 @@
 - /media/ 의 직접 정적 서빙은 DEBUG=True 일 때만 (config/urls.py 참조).
   운영에서는 protected_media view 만이 파일을 노출한다.
 """
-import os
+import os, re
 
 from django.conf import settings
 from django.db import IntegrityError
@@ -88,13 +88,12 @@ class RecordViewSet(viewsets.ModelViewSet):
         return RecordDetailSerializer
 
     def get_permissions(self):
-        # 좋아요/댓글 액션은 본인 소유 여부와 무관 — IsOwnerOrReadOnly 대신
-        # 별도 권한 사용. (조회 가능한 기록인지는 get_object()의
-        # get_queryset 필터링이 이미 보장한다.)
         if self.action == 'like_toggle':
             return [IsAuthenticated()]
         if self.action == 'comments':
             return [IsAuthenticatedOrReadOnly()]
+        if self.action == 'comment_delete':
+            return [IsAuthenticated()]
         return super().get_permissions()
 
     def perform_create(self, serializer):
@@ -160,6 +159,50 @@ class RecordViewSet(viewsets.ModelViewSet):
         Record.objects.filter(pk=record.pk).update(
             comment_count=record.comments.count())
         return Response(status=status.HTTP_204_NO_CONTENT)
+    
+
+    #   ─────────────────────────────────────────────────────
+    # ── 캔버스 다꾸용 이미지 업로드 후 연결 ─
+    def _attach_canvas_images(self, record):
+        canvas_data = record.canvas_data or {}
+        if not isinstance(canvas_data, dict):
+            return
+
+        raw_items = (
+            canvas_data.get('placed_items')
+            or canvas_data.get('placedItems')
+            or []
+        )
+
+        image_ids = set()
+
+        def collect_id(value):
+            if not value:
+                return
+            match = re.search(r'/api/records/uploads/(\d+)/', str(value))
+            if match:
+                image_ids.add(int(match.group(1)))
+
+        collect_id(canvas_data.get('main_image_src'))
+        collect_id(canvas_data.get('mainImageSrc'))
+
+        for item in raw_items:
+            if isinstance(item, dict):
+                collect_id(item.get('imageSrc'))
+
+        if image_ids:
+            RecordImage.objects.filter(
+                id__in=image_ids,
+                uploader=record.user,
+            ).update(record=record)
+
+    def perform_create(self, serializer):
+        record = serializer.save(user=self.request.user)
+        self._attach_canvas_images(record)
+
+    def perform_update(self, serializer):
+        record = serializer.save()
+        self._attach_canvas_images(record)
 
 
 # ── 이미지 업로드 ────────────────────────────────────
@@ -219,16 +262,32 @@ def upload_image(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def protected_media(request, pk):
-    """업로더 본인만 접근 가능한 이미지 응답.
+    img = get_object_or_404(
+        RecordImage.objects.select_related('record', 'record__user'),
+        pk=pk,
+    )
 
-    /api/records/uploads/<pk>/ 로 매핑.
-    향후 nginx 의 X-Accel-Redirect / Apache 의 X-Sendfile 헤더로
-    바꿔도 호환되도록 권한 체크 후 FileResponse 만 돌려준다.
-    """
-    img = get_object_or_404(RecordImage, pk=pk)
     if img.uploader_id != request.user.id:
-        # 정책: 작성자 본인만. (Record 가 public 이라도 본인이 아니면 비공개)
-        raise Http404
+        record = img.record
+
+        if not record or not record.user.is_active:
+            raise Http404
+
+        if record.status != 'published':
+            raise Http404
+
+        if record.visibility == 'private':
+            raise Http404
+
+        if record.visibility == 'friends':
+            is_following = Follow.objects.filter(
+                follower=request.user,
+                following=record.user,
+            ).exists()
+            if not is_following:
+                raise Http404
+
+        # public이면 통과
 
     if not img.file or not img.file.path or not os.path.exists(img.file.path):
         raise Http404
@@ -238,7 +297,6 @@ def protected_media(request, pk):
         as_attachment=False,
         filename=img.original_name or os.path.basename(img.file.name),
     )
-
 
 # ── 스티커 ──────────────────────────────────────────
 

@@ -168,7 +168,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # ── GMS (AI 게이트웨이) ───────────────────────────────
 GMS_API_URL = env('GMS_API_URL', default='https://gms.ssafy.io/gmsapi/api.openai.com/v1/chat/completions')
 GMS_API_KEY = env('GMS_KEY', default='')
-GMS_TIMEOUT = env.int('GMS_TIMEOUT', default=30)
+GMS_TIMEOUT = env.int('GMS_TIMEOUT', default=60)
 
 # ── DRF ────────────────────────────────────────────
 REST_FRAMEWORK = {
