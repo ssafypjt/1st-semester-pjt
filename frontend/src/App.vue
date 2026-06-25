@@ -497,7 +497,7 @@
         />
 
         <div v-if="isDiaryPreviewOpen" class="diary-preview-overlay" @click.self="closeFeedDiaryPreview">
-          <section class="diary-preview-modal" role="dialog" aria-modal="true" aria-label="다이어리 원본 보기">
+          <section class="diary-preview-modal diary-preview-with-comments" role="dialog" aria-modal="true" aria-label="다이어리 원본 보기">
             <header class="diary-preview-header">
               <div>
                 <small>DIARY PREVIEW</small>
@@ -508,52 +508,95 @@
             </header>
 
             <div v-if="previewError" class="diary-preview-state error">{{ previewError }}</div>
-            <article class="scrapbook blank-scrapbook diary-preview-book" :class="{ loading: previewLoading }">
-              <div class="page left-page">
-                <div class="record-title-edit diary-preview-title">
-                  <small>{{ previewRecord.date }}</small>
-                  <strong>{{ previewRecord.title || '제목 없는 기록' }}</strong>
-                  <span class="stars">{{ previewStars }}</span>
-                </div>
-                <div v-if="isPreviewDiaryEmpty" class="blank-guide">
-                  <strong>{{ previewRecord.title || '다이어리 기록' }}</strong>
-                  <span>{{ previewRecord.memo || '저장된 꾸미기 요소가 없어 기본 기록 정보로 표시합니다.' }}</span>
-                </div>
-              </div>
-              <div class="binder" aria-hidden="true"><span v-for="ring in 7" :key="'preview-ring-' + ring"></span></div>
-              <div class="page right-page">
-                <div v-if="isPreviewDiaryEmpty" class="blank-guide right">
-                  <strong>감상 메모</strong>
-                  <span>{{ previewRecord.memo || '작성된 감상평이 없습니다.' }}</span>
-                </div>
+
+            <div class="diary-preview-body">
+              <div class="diary-preview-content">
+                <article class="scrapbook blank-scrapbook diary-preview-book" :class="{ loading: previewLoading }" :style="{ '--canvas-scale': canvasScale }">
+                  <div class="page left-page">
+                    <div class="record-title-edit diary-preview-title">
+                      <small>{{ previewRecord.date }}</small>
+                      <strong>{{ previewRecord.title || '제목 없는 기록' }}</strong>
+                      <span class="stars">{{ previewStars }}</span>
+                    </div>
+                    <div v-if="isPreviewDiaryEmpty" class="blank-guide">
+                      <strong>{{ previewRecord.title || '다이어리 기록' }}</strong>
+                      <span>{{ previewRecord.memo || '저장된 꾸미기 요소가 없어 기본 기록 정보로 표시합니다.' }}</span>
+                    </div>
+                  </div>
+                  <div class="binder" aria-hidden="true"><span v-for="ring in 7" :key="'preview-ring-' + ring"></span></div>
+                  <div class="page right-page">
+                    <div v-if="isPreviewDiaryEmpty" class="blank-guide right">
+                      <strong>감상 메모</strong>
+                      <span>{{ previewRecord.memo || '작성된 감상평이 없습니다.' }}</span>
+                    </div>
+                  </div>
+
+                  <div class="decoration-layer diary-preview-layer">
+                    <div
+                      v-for="item in previewPlacedItems"
+                      :key="item.id"
+                      class="placed-decoration diary-preview-decoration"
+                      :style="placementStyle(item)"
+                    >
+                      <div class="placed-sticker" :class="item.tone" :style="stickerStyle(item)">
+                        <div
+                          v-if="item.type === 'bubble'"
+                          class="bubble-editor diary-preview-note"
+                          :class="item.bubbleType"
+                          :style="bubbleEditorStyle(item)"
+                        >
+                          <p :style="previewTextStyle(item)">{{ item.text }}</p>
+                        </div>
+                        <div v-else-if="item.type === 'text'" class="memo-editor diary-preview-note">
+                          <p :style="previewTextStyle(item)">{{ item.text }}</p>
+                        </div>
+                        <img v-else-if="item.imageSrc" :src="item.imageSrc" alt="다이어리 이미지" />
+                        <span v-else>{{ item.icon }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+                <div v-if="previewLoading" class="diary-preview-loading">다이어리를 불러오는 중...</div>
               </div>
 
-              <div class="decoration-layer diary-preview-layer">
-                <div
-                  v-for="item in previewPlacedItems"
-                  :key="item.id"
-                  class="placed-decoration diary-preview-decoration"
-                  :style="placementStyle(item)"
-                >
-                  <div class="placed-sticker" :class="item.tone" :style="stickerStyle(item)">
-                    <div
-                      v-if="item.type === 'bubble'"
-                      class="bubble-editor diary-preview-note"
-                      :class="item.bubbleType"
-                      :style="bubbleEditorStyle(item)"
-                    >
-                      <p :style="previewTextStyle(item)">{{ item.text }}</p>
+              <!-- 댓글 패널 -->
+              <aside class="diary-comment-panel">
+                <h4>댓글 <span class="comment-count">{{ previewComments.length }}</span></h4>
+                <div class="comment-list" ref="commentList">
+                  <div v-if="previewComments.length === 0" class="comment-empty">
+                    아직 댓글이 없습니다. 첫 댓글을 남겨보세요!
+                  </div>
+                  <div v-for="c in previewComments" :key="c.id" class="comment-item">
+                    <div class="comment-meta">
+                      <b>{{ c.user_nickname }}</b>
+                      <span>{{ formatCommentTime(c.created_at) }}</span>
                     </div>
-                    <div v-else-if="item.type === 'text'" class="memo-editor diary-preview-note">
-                      <p :style="previewTextStyle(item)">{{ item.text }}</p>
-                    </div>
-                    <img v-else-if="item.imageSrc" :src="item.imageSrc" alt="다이어리 이미지" />
-                    <span v-else>{{ item.icon }}</span>
+                    <p class="comment-body">{{ c.content }}</p>
+                    <button
+                      v-if="c.is_mine"
+                      class="comment-delete"
+                      type="button"
+                      title="삭제"
+                      @click="deletePreviewComment(c.id)"
+                    >삭제</button>
                   </div>
                 </div>
-              </div>
-            </article>
-            <div v-if="previewLoading" class="diary-preview-loading">다이어리를 불러오는 중...</div>
+                <div class="comment-input-wrap" v-if="currentUser">
+                  <textarea
+                    v-model="previewCommentText"
+                    placeholder="댓글을 입력하세요..."
+                    rows="2"
+                    @keydown.enter.exact.prevent="submitPreviewComment"
+                  ></textarea>
+                  <button
+                    type="button"
+                    class="comment-submit"
+                    :disabled="!previewCommentText.trim() || previewCommentLoading"
+                    @click="submitPreviewComment"
+                  >{{ previewCommentLoading ? '...' : '등록' }}</button>
+                </div>
+              </aside>
+            </div>
           </section>
         </div>
 
@@ -707,6 +750,10 @@ export default {
       previewRecord: {},
       previewPlacedItems: [],
       previewMainImageSrc: "",
+      previewRecordId: null,
+      previewComments: [],
+      previewCommentText: "",
+      previewCommentLoading: false,
       recordVisibility: "public",
       recordTitle: "",
       bubblePresetColors: ['#ffffff', '#fff5f5', '#fff8e1', '#e8f5e9', '#e3f2fd', '#f3e5f5', '#fce4ec', '#ede7f6'],
@@ -954,6 +1001,9 @@ export default {
       this.isDiaryPreviewOpen = true;
       this.previewError = "";
       this.previewLoading = false;
+      this.previewRecordId = record.id;
+      this.previewComments = [];
+      this.previewCommentText = "";
 
       try {
         this.setDiaryPreviewFromRecord(record);
@@ -970,6 +1020,8 @@ export default {
         this.previewMainImageSrc = "";
       }
 
+      this.loadPreviewComments();
+
       try {
         const detail = await this.apiFetch(`/api/records/${record.id}/`);
         this.setDiaryPreviewFromRecord(this.mergePreviewRecord(record, detail));
@@ -985,6 +1037,62 @@ export default {
       this.previewRecord = {};
       this.previewPlacedItems = [];
       this.previewMainImageSrc = "";
+      this.previewRecordId = null;
+      this.previewComments = [];
+      this.previewCommentText = "";
+    },
+    async loadPreviewComments() {
+      if (!this.previewRecordId) return;
+      try {
+        const data = await this.apiFetch(`/api/records/${this.previewRecordId}/comments/`);
+        this.previewComments = Array.isArray(data) ? data : [];
+      } catch (e) {
+        console.error("댓글 불러오기 실패:", e);
+      }
+    },
+    async submitPreviewComment() {
+      const text = this.previewCommentText.trim();
+      if (!text || !this.previewRecordId || this.previewCommentLoading) return;
+      this.previewCommentLoading = true;
+      try {
+        await this.apiFetch(`/api/records/${this.previewRecordId}/comments/`, {
+          method: "POST",
+          body: JSON.stringify({ content: text }),
+        });
+        this.previewCommentText = "";
+        await this.loadPreviewComments();
+        // 피드 카드의 comment_count도 갱신
+        const feedRec = this.feedRecords.find(r => r.id === this.previewRecordId);
+        if (feedRec) feedRec.comment_count = this.previewComments.length;
+      } catch (e) {
+        console.error("댓글 작성 실패:", e);
+      } finally {
+        this.previewCommentLoading = false;
+      }
+    },
+    async deletePreviewComment(commentId) {
+      if (!this.previewRecordId) return;
+      try {
+        await this.apiFetch(`/api/records/${this.previewRecordId}/comments/${commentId}/`, {
+          method: "DELETE",
+        });
+        await this.loadPreviewComments();
+        const feedRec = this.feedRecords.find(r => r.id === this.previewRecordId);
+        if (feedRec) feedRec.comment_count = this.previewComments.length;
+      } catch (e) {
+        console.error("댓글 삭제 실패:", e);
+      }
+    },
+    formatCommentTime(dateStr) {
+      if (!dateStr) return "";
+      const d = new Date(dateStr);
+      const now = new Date();
+      const diff = Math.floor((now - d) / 1000);
+      if (diff < 60) return "방금 전";
+      if (diff < 3600) return `${Math.floor(diff / 60)}분 전`;
+      if (diff < 86400) return `${Math.floor(diff / 3600)}시간 전`;
+      if (diff < 604800) return `${Math.floor(diff / 86400)}일 전`;
+      return d.toLocaleDateString("ko-KR");
     },
     setDiaryPreviewFromRecord(record) {
       const cd = record?.canvas_data || {};

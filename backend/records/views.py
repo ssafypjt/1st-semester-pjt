@@ -146,6 +146,21 @@ class RecordViewSet(viewsets.ModelViewSet):
                                        context={'request': request})
         return Response(serializer.data)
 
+    # ── 댓글 삭제 ────────────────────────────────────────
+    @action(detail=True, methods=['delete'],
+            url_path='comments/(?P<comment_id>[0-9]+)')
+    def comment_delete(self, request, pk=None, comment_id=None):
+        """본인 댓글 삭제. DELETE /api/records/<pk>/comments/<comment_id>/"""
+        record = self.get_object()
+        comment = get_object_or_404(Comment, pk=comment_id, record=record)
+        if comment.user_id != request.user.id:
+            return Response({'detail': '본인의 댓글만 삭제할 수 있습니다.'},
+                            status=status.HTTP_403_FORBIDDEN)
+        comment.delete()
+        Record.objects.filter(pk=record.pk).update(
+            comment_count=record.comments.count())
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 # ── 이미지 업로드 ────────────────────────────────────
 ALLOWED_EXT = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'}
